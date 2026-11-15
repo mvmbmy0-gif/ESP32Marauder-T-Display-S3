@@ -8,118 +8,125 @@
   <img src="pictures/marauder_skull_patch_04_full_final.png" alt="ESP32 Marauder Logo" width="220">
 </p>
 
-**ESP32Marauder port for LilyGO T-Display S3 (ESP32-S3 + Parallel 8-bit ST7789 Display)**
+# ESP32Marauder for LilyGO T-Display S3
+### 📟 Standard Non-Touch Version / Звичайна версія БЕЗ тачскріну
+
+> [!IMPORTANT]
+> 🔴 **NON-TOUCH VERSION (ВЕРСІЯ БЕЗ СЕНСОРНОГО ЕКРАНУ)**  
+> This firmware is tailored specifically for the standard **LilyGO T-Display S3 (Non-Touch)**.  
+> Navigation is performed **exclusively via 2 physical onboard buttons**:  
+> - **`BOOT (GPIO 0)`**: Short press = Select / Enter. Long press (>800ms) = Back / Exit.  
+> - **`GPIO 14`**: Scroll down through menu items.  
+>  
+> Ця прошивка створена суто для звичайної плати **LilyGO T-Display S3 (Non-Touch, без сенсора)**.  
+> Все керування здійснюється **виключно двома фізичними кнопками**!
 
 [English Documentation](#-english) | [Українська версія](#-українська-версія)
 
 ---
 </div>
 
+## 📂 Структура репозиторію / Repository Structure
+
+Репозиторій очищено від усіх сторонніх плат (залишено тільки **LilyGO T-Display S3**) та організовано в 3 зрозумілі папки:
+
+```text
+├── 📦 firmware_binaries/    <- Готові бінарники (merged.bin, firmware.bin, bootloader, partitions)
+├── ⚡ flashing_tools/       <- Усе для прошивки: готові скрипти (.sh, .bat) та Web Flasher гід
+├── 💻 esp32_marauder/       <- Чистий вихідний код прошивки під LilyGO T-Display S3
+├── 🖼️ pictures/             <- Логотип проєкту
+├── 📄 platformio.ini        <- Конфігурація для збірки в PlatformIO
+└── 📄 README.md             <- Головна документація
+```
+
+---
+
 <a name="english"></a>
 ## 🇬🇧 English
 
 ### ⚡ Overview
-This is a dedicated, fully optimized port of **ESP32Marauder** specifically crafted for the **LilyGO T-Display S3** (ESP32-S3). It features a parallel 8-bit display driver for the ST7789 IPS LCD (320x170), two-button hardware navigation, and silent real-time background Wi-Fi scanning across all attack and sniffer menus.
+This is a dedicated, fully optimized port of **ESP32Marauder** specifically crafted for the **LilyGO T-Display S3 (Standard Non-Touch version)**. It features a parallel 8-bit ST7789 IPS LCD driver, two-button hardware navigation, protected RAM allocation, and silent background Wi-Fi scanning.
 
-### ✨ Key Features
-- **Parallel 8-bit ST7789 Display Driver:** Fast frame rate via 8080-I 8-bit bus, custom landscape layout, and hardware framebuffer readback for screenshots over serial (`screen` command).
-- **Two-Button UI Navigation:** Intuitive navigation designed for non-touch screens:
-  - **Left / Boot Button (`GPIO 0`):** Short press = `OK / Select / Toggle`, Long press (>800ms) = `Back / Exit`.
-  - **Right Button (`GPIO 14`):** Short press = `Down / Scroll`.
-- **Silent Background Auto-Scanning:** Menus (`AP Clone Spam`, `Probe Req Flood`, `Deauth Flood`, `Select APs`, `Karma`, `SAE Commit`, etc.) open directly into the stock control view with green buttons, silently scan Wi-Fi channels in the background, and dynamically populate discovered Access Points in real time.
-- **RuntimeMemoryGuard:** Internal heap monitoring and memory safety guard ensuring zero crashes and constant >200KB free heap.
+> [!NOTE]
+> **No touch screen hardware is required or used.** All menus and functions are fully accessible via the 2 physical buttons.
+
+### 🎮 Hardware Controls (Non-Touch):
+- **BOOT Button (`GPIO 0`):**
+  - **Single Click:** Select / Toggle / Confirm action.
+  - **Long Press (>800ms):** Back / Exit current view / Stop attack.
+- **Side Button (`GPIO 14`):**
+  - **Single Click:** Scroll down to the next menu item.
+
+### ✨ Key Features:
+- **Parallel 8-bit ST7789 Display Driver:** High frame rate via 8080-I 8-bit bus, custom 320x170 landscape layout, and hardware framebuffer readback for screenshots over serial (`screen` command).
+- **Silent Background Auto-Scanning:** Sniffer and attack menus (`AP Clone Spam`, `Probe Req Flood`, `Deauth Flood`, `Select APs`, etc.) immediately launch in operational mode, scanning channels in the background and populating AP lists automatically.
+- **RuntimeMemoryGuard:** Internal memory protection ensuring stable operation and >200KB free heap during continuous scanning.
 - **Evil Portal:** Embedded captive portal with local LittleFS file management and CLI support (`evilportal -c list`).
 
 ---
 
-### 🖥️ Display Driver & Pinout (LilyGO T-Display S3)
-The onboard **ST7789V** panel operates on an Intel 8080 8-bit parallel bus:
-
+### 🖥️ Pinout (LilyGO T-Display S3)
 | Signal | GPIO (ESP32-S3) | Description |
 | :--- | :---: | :--- |
-| **`BOARD_POWERON_PIN`** | `GPIO 15` | Main board power enable (**MUST be HIGH** for display to turn on) |
+| **`BOARD_POWERON_PIN`** | `GPIO 15` | Main board power enable (**MUST be HIGH** for display) |
 | **`TFT_BL`** | `GPIO 38` | Backlight control (Active HIGH) |
 | **`TFT_CS`** | `GPIO 6` | Chip Select (Active LOW) |
 | **`TFT_DC`** | `GPIO 7` | Data / Command register select |
 | **`TFT_RST`**| `GPIO 5` | Hardware reset |
 | **`TFT_WR`** | `GPIO 8` | Write strobe clock |
-| **`TFT_RD`** | `GPIO 9` | Read strobe clock (used for screenshot capture) |
+| **`TFT_RD`** | `GPIO 9` | Read strobe clock (screenshot readback) |
 | **`TFT_D0..D7`** | `GPIO 39, 40, 41, 42, 45, 46, 47, 48` | 8-bit parallel data bus |
-
-Configuration file: `User_Setup_lilygo_t_display_s3.h` (used by `TFT_eSPI`).
-
----
-
-### 📦 Pre-compiled Release Binaries
-Available in the [GitHub Releases](https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3/releases/latest) section:
-
-1. **`1_esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin`** (⭐ **Recommended**)
-   - Complete 1-click image (`bootloader` + `partitions` + `boot_app0` + `firmware`).
-   - Flash at offset **`0x0000`** in [ESP Web Flasher](https://espressif.github.io/esptool-js/) or using esptool:
-     ```bash
-     esptool.py --chip esp32s3 -p <PORT> write_flash 0x0000 1_esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin
-     ```
-2. **`2_esp32_marauder_v1.20.0_lilygo_t_display_s3.bin`** — Firmware only (flash offset `0x10000`).
-3. **`3_bootloader.bin`** — Offset `0x0000`.
-4. **`4_partitions.bin`** — Offset `0x8000`.
-5. **`5_esp32_marauder_lilygo_t_display_s3_source.zip`** — Clean source code package for LilyGO T-Display S3 only (no legacy bloat).
+| **`BUTTON_1`** | `GPIO 0` | BOOT button (Select / Back) |
+| **`BUTTON_2`** | `GPIO 14` | Navigation button (Scroll down) |
 
 ---
 
-### 🛠️ Building with PlatformIO
-```bash
-git clone https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3.git
-cd ESP32Marauder-T-Display-S3
-pio run -e lilygo-t-display-s3 -t upload
-```
+### 🚀 1-Click Flashing (Web Browser)
+1. Open [ESP Web Flasher](https://espressif.github.io/esptool-js/) in Chrome / Edge.
+2. Connect your LilyGO T-Display S3 via USB-C.
+3. Choose `firmware_binaries/esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin` at offset **`0x0`**.
+4. Click **Program**. Done!
 
----
-
-### 🙏 Credits & License
-- Based on the original project **[ESP32Marauder](https://github.com/justcallmekoko/ESP32Marauder)** by **[JustCallMeKoko](https://github.com/justcallmekoko)**.
-- Licensed under the **MIT License** — free to use, modify, and distribute with attribution.
-
----
 ---
 
 <a name="українська-версія"></a>
 ## 🇺🇦 Українська версія
 
 ### ⚡ Огляд
-Це спеціалізований, повністю оптимізований порт **ESP32Marauder** для плати **LilyGO T-Display S3** (ESP32-S3). Прошивка включає підтримку 8-бітного паралельного IPS-екрану ST7789 (320x170), повноцінне двокнопкове керування та безшумне фонове сканування Wi-Fi мереж у реальному часі.
+Це спеціалізований, повністю оптимізований порт **ESP32Marauder** для стандартної плати **LilyGO T-Display S3 (версія БЕЗ сенсорного екрану / Non-Touch)**.  
+Прошивка містить драйвер 8-бітного паралельного IPS-екрану ST7789 (320x170), надійне двокнопкове керування та безшумне фонове сканування Wi-Fi мереж.
 
-### ✨ Основні можливості:
-- **Драйвер паралельного дисплею ST7789 (8-bit):** Швидкісне оновлення через шину 8080-I, кастомна розмітка landscape 320x170 та апаратне зчитування пікселів для зняття скріншотів через серійний порт (`screen`).
-- **Двокнопкова навігація:** Повний контроль без сенсорного екрана:
-  - **Ліва кнопка / Boot (`GPIO 0`):** Короткий клік — `OK / Вибір`, довге утримання (>800 мс) — `Назад / Вихід / Зупинка`.
-  - **Права кнопка (`GPIO 14`):** Короткий клік — `Вниз / Прокрутка списку`.
-- **Фонове автосканування мереж:** Меню (`AP Clone Spam`, `Probe Req Flood`, `Deauth Flood`, `Select APs`, `Karma` тощо) відразу відкривають стокову панель із зеленими кнопками, сканують ефір у фоні та автоматично додають знайдені точки доступу в реальному часі.
-- **RuntimeMemoryGuard:** Захист від падінь через переповнення пам'яті, контроль внутрішньої купи (постійно >200 КБ вільної RAM).
-- **Evil Portal:** Підтримка локального флеш-сховища LittleFS для сторінок порталу та CLI-команда `evilportal -c list`.
+> [!NOTE]
+> **Тачскрін не потрібен!** Усе керування оптимізовано під дві зручні фізичні кнопки на корпусі плати.
 
----
-
-### 🖥️ Розпіновка дисплею (LilyGO T-Display S3):
-| Сигнал | GPIO (ESP32-S3) | Призначення |
-| :--- | :---: | :--- |
-| **`BOARD_POWERON_PIN`** | `GPIO 15` | Головне живлення плати (**обов'язково HIGH**, інакше екран не вмикається) |
-| **`TFT_BL`** | `GPIO 38` | Підсвічування екрана (Active HIGH) |
-| **`TFT_CS`** | `GPIO 6` | Chip Select (Active LOW) |
-| **`TFT_DC`** | `GPIO 7` | Data / Command |
-| **`TFT_RST`**| `GPIO 5` | Скид (Reset) |
-| **`TFT_WR`** | `GPIO 8` | Такт запису |
-| **`TFT_RD`** | `GPIO 9` | Такт читання (для зняття скріншотів) |
-| **`TFT_D0..D7`** | `GPIO 39, 40, 41, 42, 45, 46, 47, 48` | 8-бітна паралельна шина даних |
+### 🎮 Керування кнопками (Non-Touch):
+- **Кнопка BOOT (`GPIO 0`):**
+  - **Короткий клік:** Вибір / Вхід у меню / Підтвердження.
+  - **Довге утримання (>800 мс):** Назад / Вихід з поточного меню / Зупинка сканування чи атаки.
+- **Права кнопка (`GPIO 14`):**
+  - **Короткий клік:** Гортання списку пунктів меню вниз (Scroll Down).
 
 ---
 
-### 📦 Завантаження та прошивка
-Усі бінарники доступні у вкладці **[Releases](https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3/releases/latest)**:
-1. **`1_esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin`** (⭐ **Рекомендовано**) — готовий повний образ для прошивки в 1 клік з адреси **`0x0000`** через браузерний [ESP Web Flasher](https://espressif.github.io/esptool-js/) або `esptool`.
-2. **`2_esp32_marauder_v1.20.0_lilygo_t_display_s3.bin`** — файл прошивки для адреси `0x10000`.
-3. **`3_bootloader.bin`** — адреса `0x0000`.
-4. **`4_partitions.bin`** — адреса `0x8000`.
-5. **`5_esp32_marauder_lilygo_t_display_s3_source.zip`** — очищений архів з вихідним кодом тільки для LilyGO T-Display S3.
+### 📁 3 Організовані папки репозиторію:
+1. **`firmware_binaries/`**:
+   - `esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin` — повний злитий образ прошивки для запису з адреси `0x0`.
+   - `esp32_marauder_v1.20.0_lilygo_t_display_s3.bin` — бінарник програми для адреси `0x10000`.
+   - `bootloader.bin` (адреса `0x0000`) та `partitions.bin` (адреса `0x8000`).
+2. **`flashing_tools/`**:
+   - Скрипти для швидкої прошивки в один клік: `flash_firmware.sh` (macOS/Linux) та `flash_firmware.bat` (Windows).
+   - Детальна інструкція з прошивки через веб-браузер або термінал.
+3. **`esp32_marauder/`**:
+   - Повний вихідний код, очищений від усіх зайвих плат і налаштований суто під LilyGO T-Display S3 Non-Touch.
+
+---
+
+### 🛠️ Збірка проекту з вихідного коду (PlatformIO)
+```bash
+git clone https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3.git
+cd ESP32Marauder-T-Display-S3
+pio run -e lilygo-t-display-s3 -t upload
+```
 
 ---
 
