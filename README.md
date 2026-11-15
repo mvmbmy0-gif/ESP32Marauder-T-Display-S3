@@ -4,6 +4,10 @@
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
 
+<p align="center">
+  <img src="pictures/marauder_skull_patch_04_full_final.png" alt="ESP32 Marauder Logo" width="220">
+</p>
+
 **ESP32Marauder port for LilyGO T-Display S3 (ESP32-S3 + Parallel 8-bit ST7789 Display)**
 
 [English Documentation](#-english) | [Українська версія](#-українська-версія)
@@ -47,18 +51,18 @@ Configuration file: `User_Setup_lilygo_t_display_s3.h` (used by `TFT_eSPI`).
 ---
 
 ### 📦 Pre-compiled Release Binaries
-Available in the [GitHub Releases](https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3/releases/latest) section and in `Release Bins/`:
+Available in the [GitHub Releases](https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3/releases/latest) section:
 
-1. **`esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin`** (⭐ **Recommended**)
+1. **`1_esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin`** (⭐ **Recommended**)
    - Complete 1-click image (`bootloader` + `partitions` + `boot_app0` + `firmware`).
    - Flash at offset **`0x0000`** in [ESP Web Flasher](https://espressif.github.io/esptool-js/) or using esptool:
      ```bash
-     esptool.py --chip esp32s3 -p <PORT> write_flash 0x0000 esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin
+     esptool.py --chip esp32s3 -p <PORT> write_flash 0x0000 1_esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin
      ```
-2. **`esp32_marauder_v1.20.0_lilygo_t_display_s3.bin`** — Firmware only (flash offset `0x10000`).
-3. **`bootloader.bin`** — Offset `0x0000`.
-4. **`partitions.bin`** — Offset `0x8000`.
-5. **`esp32_marauder_lilygo_t_display_s3_source.zip`** — Clean source code package for LilyGO T-Display S3 only (no legacy bloat).
+2. **`2_esp32_marauder_v1.20.0_lilygo_t_display_s3.bin`** — Firmware only (flash offset `0x10000`).
+3. **`3_bootloader.bin`** — Offset `0x0000`.
+4. **`4_partitions.bin`** — Offset `0x8000`.
+5. **`5_esp32_marauder_lilygo_t_display_s3_source.zip`** — Clean source code package for LilyGO T-Display S3 only (no legacy bloat).
 
 ---
 
@@ -68,6 +72,12 @@ git clone https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3.git
 cd ESP32Marauder-T-Display-S3
 pio run -e lilygo-t-display-s3 -t upload
 ```
+
+---
+
+### 🙏 Credits & License
+- Based on the original project **[ESP32Marauder](https://github.com/justcallmekoko/ESP32Marauder)** by **[JustCallMeKoko](https://github.com/justcallmekoko)**.
+- Licensed under the **MIT License** — free to use, modify, and distribute with attribution.
 
 ---
 ---
@@ -105,8 +115,14 @@ pio run -e lilygo-t-display-s3 -t upload
 
 ### 📦 Завантаження та прошивка
 Усі бінарники доступні у вкладці **[Releases](https://github.com/mvmbmy0-gif/ESP32Marauder-T-Display-S3/releases/latest)**:
-1. **`esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin`** (⭐ **Рекомендовано**) — готовий повний образ для прошивки в 1 клік з адреси **`0x0000`** через браузерний [ESP Web Flasher](https://espressif.github.io/esptool-js/) або `esptool`.
-2. **`esp32_marauder_v1.20.0_lilygo_t_display_s3.bin`** — файл прошивки для адреси `0x10000`.
-3. **`bootloader.bin`** — адреса `0x0000`.
-4. **`partitions.bin`** — адреса `0x8000`.
-5. **`esp32_marauder_lilygo_t_display_s3_source.zip`** — очищений архів з вихідним кодом тільки для LilyGO T-Display S3.
+1. **`1_esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin`** (⭐ **Рекомендовано**) — готовий повний образ для прошивки в 1 клік з адреси **`0x0000`** через браузерний [ESP Web Flasher](https://espressif.github.io/esptool-js/) або `esptool`.
+2. **`2_esp32_marauder_v1.20.0_lilygo_t_display_s3.bin`** — файл прошивки для адреси `0x10000`.
+3. **`3_bootloader.bin`** — адреса `0x0000`.
+4. **`4_partitions.bin`** — адреса `0x8000`.
+5. **`5_esp32_marauder_lilygo_t_display_s3_source.zip`** — очищений архів з вихідним кодом тільки для LilyGO T-Display S3.
+
+---
+
+### 🙏 Подяки та ліцензія
+- Базується на оригінальному проекті **[ESP32Marauder](https://github.com/justcallmekoko/ESP32Marauder)** від **[JustCallMeKoko](https://github.com/justcallmekoko)**.
+- Проєкт поширюється за відкритою ліцензією **MIT License** — вільне використання, модифікація та розповсюдження із зазначенням авторства.
