@@ -28,9 +28,10 @@
 
 ## 📂 Структура репозиторію / Repository Structure
 
-Репозиторій очищено від усіх сторонніх плат (залишено тільки **LilyGO T-Display S3**) та організовано в 3 зрозумілі папки:
+Репозиторій очищено від усіх сторонніх плат (залишено тільки **LilyGO T-Display S3**) та організовано у зручні папки:
 
 ```text
+├── 🌟 all_in_one/           <- Універсальна папка: абсолютно всі файли проєкту в одному місці (бінарники, скрипти, код)
 ├── 📦 firmware_binaries/    <- Готові бінарники (merged.bin, firmware.bin, bootloader, partitions)
 ├── ⚡ flashing_tools/       <- Усе для прошивки: готові скрипти (.sh, .bat) та Web Flasher гід
 ├── 💻 esp32_marauder/       <- Чистий вихідний код прошивки під LilyGO T-Display S3
@@ -84,7 +85,7 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
 ### 🚀 1-Click Flashing (Web Browser)
 1. Open [ESP Web Flasher](https://espressif.github.io/esptool-js/) in Chrome / Edge.
 2. Connect your LilyGO T-Display S3 via USB-C.
-3. Choose `firmware_binaries/esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin` at offset **`0x0`**.
+3. Choose `firmware_binaries/esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin` (or from `all_in_one/`) at offset **`0x0`**.
 4. Click **Program**. Done!
 
 ---
@@ -108,15 +109,17 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
 
 ---
 
-### 📁 3 Організовані папки репозиторію:
-1. **`firmware_binaries/`**:
+### 📁 Структура папок:
+1. **`all_in_one/`** (⭐ **Універсальна папка**):
+   - Містить абсолютно всі файли проєкту разом: готові бінарники, скрипти прошивки, конфігурацію дисплея, PlatformIO конфіг та повний архів вихідного коду.
+2. **`firmware_binaries/`**:
    - `esp32_marauder_v1.20.0_lilygo_t_display_s3_merged.bin` — повний злитий образ прошивки для запису з адреси `0x0`.
    - `esp32_marauder_v1.20.0_lilygo_t_display_s3.bin` — бінарник програми для адреси `0x10000`.
    - `bootloader.bin` (адреса `0x0000`) та `partitions.bin` (адреса `0x8000`).
-2. **`flashing_tools/`**:
+3. **`flashing_tools/`**:
    - Скрипти для швидкої прошивки в один клік: `flash_firmware.sh` (macOS/Linux) та `flash_firmware.bat` (Windows).
    - Детальна інструкція з прошивки через веб-браузер або термінал.
-3. **`esp32_marauder/`**:
+4. **`esp32_marauder/`**:
    - Повний вихідний код, очищений від усіх зайвих плат і налаштований суто під LilyGO T-Display S3 Non-Touch.
 
 ---
