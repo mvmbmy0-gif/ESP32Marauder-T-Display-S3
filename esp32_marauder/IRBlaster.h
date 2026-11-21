@@ -42,12 +42,17 @@ enum FairyLightCmd {
   FAIRY_CMD_TIMER
 };
 
-// WS611I / RGB LED Strip
+// SP611E / Smart Pixel LED Controller (38-key remote)
 enum LedStripCmd {
   LED_CMD_POWER_ON,
   LED_CMD_POWER_OFF,
   LED_CMD_BRIGHT_UP,
   LED_CMD_BRIGHT_DOWN,
+  LED_CMD_SPEED_UP,
+  LED_CMD_SPEED_DOWN,
+  LED_CMD_MODE_NEXT,
+  LED_CMD_MUSIC,
+  LED_CMD_AUTO,
   LED_CMD_RED,
   LED_CMD_GREEN,
   LED_CMD_BLUE,

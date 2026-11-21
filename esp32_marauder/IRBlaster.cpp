@@ -203,49 +203,58 @@ void IRBlaster::sendFairyLights(FairyLightCmd cmd) {
 }
 
 void IRBlaster::sendLEDStrip(LedStripCmd cmd) {
-  uint32_t code = 0;
+  uint32_t code_sp = 0;
+  uint32_t code_alt = 0;
   String name = "";
 
   switch (cmd) {
     case LED_CMD_POWER_ON:
-      code = 0x00F7C03F; name = "Power ON"; break;
+      code_sp = 0x00FF02FD; code_alt = 0x00F7C03F; name = "Power ON"; break;
     case LED_CMD_POWER_OFF:
-      code = 0x00F740BF; name = "Power OFF"; break;
+      code_sp = 0x00FF827D; code_alt = 0x00F740BF; name = "Power OFF"; break;
     case LED_CMD_BRIGHT_UP:
-      code = 0x00F700FF; name = "Bright +"; break;
+      code_sp = 0x00FF00FF; code_alt = 0x00F700FF; name = "Bright +"; break;
     case LED_CMD_BRIGHT_DOWN:
-      code = 0x00F7807F; name = "Bright -"; break;
+      code_sp = 0x00FF807F; code_alt = 0x00F7807F; name = "Bright -"; break;
+    case LED_CMD_SPEED_UP:
+      code_sp = 0x00FF22DD; code_alt = 0x00F7E817; name = "Speed +"; break;
+    case LED_CMD_SPEED_DOWN:
+      code_sp = 0x00FFA25D; code_alt = 0x00F7C837; name = "Speed -"; break;
+    case LED_CMD_MODE_NEXT:
+      code_sp = 0x00FF12ED; code_alt = 0x00F7D02F; name = "Mode +"; break;
+    case LED_CMD_MUSIC:
+      code_sp = 0x00FF52AD; code_alt = 0x00F7F00F; name = "Music Mode"; break;
+    case LED_CMD_AUTO:
+      code_sp = 0x00FF32CD; code_alt = 0x00F7D02F; name = "Auto Effect"; break;
     case LED_CMD_RED:
-      code = 0x00F720DF; name = "Red"; break;
+      code_sp = 0x00FF1AE5; code_alt = 0x00F720DF; name = "Red"; break;
     case LED_CMD_GREEN:
-      code = 0x00F7A05F; name = "Green"; break;
+      code_sp = 0x00FF9A65; code_alt = 0x00F7A05F; name = "Green"; break;
     case LED_CMD_BLUE:
-      code = 0x00F7609F; name = "Blue"; break;
+      code_sp = 0x00FF5AA5; code_alt = 0x00F7609F; name = "Blue"; break;
     case LED_CMD_WHITE:
-      code = 0x00F7E01F; name = "White"; break;
+      code_sp = 0x00FFDA25; code_alt = 0x00F7E01F; name = "White"; break;
     case LED_CMD_FLASH:
-      code = 0x00F7D02F; name = "Flash"; break;
+      code_sp = 0x00FFD02F; code_alt = 0x00F7D02F; name = "Flash"; break;
     case LED_CMD_STROBE:
-      code = 0x00F7F00F; name = "Strobe"; break;
+      code_sp = 0x00FFF00F; code_alt = 0x00F7F00F; name = "Strobe"; break;
     case LED_CMD_FADE:
-      code = 0x00F7C837; name = "Fade"; break;
+      code_sp = 0x00FFC837; code_alt = 0x00F7C837; name = "Fade"; break;
     case LED_CMD_SMOOTH:
-      code = 0x00F7E817; name = "Smooth"; break;
+      code_sp = 0x00FFE817; code_alt = 0x00F7E817; name = "Smooth"; break;
   }
 
-  // Send primary 0x00F7 code
-  sendNEC32(code);
-  // Also send 0x00FF alternate if power command
-  if (cmd == LED_CMD_POWER_ON) {
-    delay(40);
-    sendNEC32(0x00FF02FD);
-  } else if (cmd == LED_CMD_POWER_OFF) {
-    delay(40);
-    sendNEC32(0x00FF827D);
+  // Transmit dual-burst for 100% SP611E / LED compatibility
+  if (code_sp != 0) {
+    sendNEC32(code_sp);
+  }
+  if (code_alt != 0 && code_alt != code_sp) {
+    delay(35);
+    sendNEC32(code_alt);
   }
 
-  last_tx_info = "WS611I LED: " + name;
-  Serial.printf("[IR TX] WS611I LED Strip: %s (0x%08X)\n", name.c_str(), code);
+  last_tx_info = "SP611E: " + name;
+  Serial.printf("[IR TX] SP611E LED Strip: %s (0x%08X / 0x%08X)\n", name.c_str(), code_sp, code_alt);
 }
 
 void IRBlaster::startLoop(IRLoopTarget target, uint32_t interval_ms) {

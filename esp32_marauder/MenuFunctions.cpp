@@ -2981,7 +2981,7 @@ void MenuFunctions::RunSetup()
   irMenu.name = "IR Remote";
   irTvMenu.name = "Panasonic TV";
   irFairyMenu.name = "Window Lights";
-  irLedMenu.name = "WS611I LED";
+  irLedMenu.name = "SP611E LED";
   irLoopMenu.name = "IR 3s Loop";
 
   irMenu.parentMenu = &mainMenu;
@@ -2997,7 +2997,7 @@ void MenuFunctions::RunSetup()
   this->addNodes(&irMenu, "Window Lights (1-8)", TFTYELLOW, GENERAL_APPS, [this]() {
     this->changeMenu(&irFairyMenu, true);
   });
-  this->addNodes(&irMenu, "WS611I LED Strip", TFTGREEN, GENERAL_APPS, [this]() {
+  this->addNodes(&irMenu, "SP611E LED Strip", TFTGREEN, GENERAL_APPS, [this]() {
     this->changeMenu(&irLedMenu, true);
   });
   this->addNodes(&irMenu, "Panasonic TV", TFTCYAN, GENERAL_APPS, [this]() {
@@ -3086,7 +3086,7 @@ void MenuFunctions::RunSetup()
     ir_blaster_obj.sendFairyLights(FAIRY_CMD_TIMER);
   });
 
-  // Build irLedMenu (WS611I LED Strip)
+  // Build irLedMenu (SP611E LED Strip)
   this->addNodes(&irLedMenu, text09, TFTLIGHTGREY, 0, [this]() {
     this->changeMenu(irLedMenu.parentMenu, true);
   });
@@ -3095,6 +3095,15 @@ void MenuFunctions::RunSetup()
   });
   this->addNodes(&irLedMenu, "Power OFF", TFTRED, 0, []() {
     ir_blaster_obj.sendLEDStrip(LED_CMD_POWER_OFF);
+  });
+  this->addNodes(&irLedMenu, "Mode + (Dynamic)", TFTCYAN, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_MODE_NEXT);
+  });
+  this->addNodes(&irLedMenu, "Music Mode (Sound)", TFTMAGENTA, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_MUSIC);
+  });
+  this->addNodes(&irLedMenu, "Auto Effect", TFTYELLOW, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_AUTO);
   });
   this->addNodes(&irLedMenu, "Red (Червоний)", TFTRED, 0, []() {
     ir_blaster_obj.sendLEDStrip(LED_CMD_RED);
@@ -3108,20 +3117,20 @@ void MenuFunctions::RunSetup()
   this->addNodes(&irLedMenu, "White (Білий)", TFTWHITE, 0, []() {
     ir_blaster_obj.sendLEDStrip(LED_CMD_WHITE);
   });
-  this->addNodes(&irLedMenu, "Flash Effect", TFTYELLOW, 0, []() {
-    ir_blaster_obj.sendLEDStrip(LED_CMD_FLASH);
-  });
-  this->addNodes(&irLedMenu, "Fade Effect", TFTMAGENTA, 0, []() {
-    ir_blaster_obj.sendLEDStrip(LED_CMD_FADE);
-  });
-  this->addNodes(&irLedMenu, "Strobe Effect", TFTCYAN, 0, []() {
-    ir_blaster_obj.sendLEDStrip(LED_CMD_STROBE);
-  });
   this->addNodes(&irLedMenu, "Brightness +", TFTYELLOW, 0, []() {
     ir_blaster_obj.sendLEDStrip(LED_CMD_BRIGHT_UP);
   });
   this->addNodes(&irLedMenu, "Brightness -", TFTLIGHTGREY, 0, []() {
     ir_blaster_obj.sendLEDStrip(LED_CMD_BRIGHT_DOWN);
+  });
+  this->addNodes(&irLedMenu, "Speed +", TFTORANGE, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_SPEED_UP);
+  });
+  this->addNodes(&irLedMenu, "Speed -", TFTORANGE, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_SPEED_DOWN);
+  });
+  this->addNodes(&irLedMenu, "Fade Effect", TFTMAGENTA, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_FADE);
   });
 
   // Build irLoopMenu (3-Second Loop / Test Mode)
@@ -3132,7 +3141,7 @@ void MenuFunctions::RunSetup()
     ir_blaster_obj.startLoop(IR_LOOP_FAIRY_LIGHTS, 3000);
     this->updateStatusBar();
   });
-  this->addNodes(&irLoopMenu, "LED 3s Loop (Colors)", TFTGREEN, BEACON_SPAM, [this]() {
+  this->addNodes(&irLoopMenu, "SP611E 3s Loop", TFTGREEN, BEACON_SPAM, [this]() {
     ir_blaster_obj.startLoop(IR_LOOP_LED_STRIP, 3000);
     this->updateStatusBar();
   });

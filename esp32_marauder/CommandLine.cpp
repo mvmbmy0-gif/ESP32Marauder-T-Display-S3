@@ -637,6 +637,11 @@ void CommandLine::runCommand(String input) {
         sub.toLowerCase();
         if (sub == "on") ir_blaster_obj.sendLEDStrip(LED_CMD_POWER_ON);
         else if (sub == "off") ir_blaster_obj.sendLEDStrip(LED_CMD_POWER_OFF);
+        else if (sub == "mode") ir_blaster_obj.sendLEDStrip(LED_CMD_MODE_NEXT);
+        else if (sub == "music") ir_blaster_obj.sendLEDStrip(LED_CMD_MUSIC);
+        else if (sub == "auto") ir_blaster_obj.sendLEDStrip(LED_CMD_AUTO);
+        else if (sub == "speed+") ir_blaster_obj.sendLEDStrip(LED_CMD_SPEED_UP);
+        else if (sub == "speed-") ir_blaster_obj.sendLEDStrip(LED_CMD_SPEED_DOWN);
         else if (sub == "red") ir_blaster_obj.sendLEDStrip(LED_CMD_RED);
         else if (sub == "green") ir_blaster_obj.sendLEDStrip(LED_CMD_GREEN);
         else if (sub == "blue") ir_blaster_obj.sendLEDStrip(LED_CMD_BLUE);
@@ -649,7 +654,7 @@ void CommandLine::runCommand(String input) {
         else if (sub == "bright-" || sub == "dim-") ir_blaster_obj.sendLEDStrip(LED_CMD_BRIGHT_DOWN);
         else Serial.println(F("Unknown LED strip command"));
       } else {
-        Serial.println(F("Usage: ir led <on|off|red|green|blue|white|flash|fade|strobe|smooth|bright+|bright->"));
+        Serial.println(F("Usage: ir led <on|off|mode|music|auto|speed+|speed-|red|green|blue|white|flash|fade|strobe|smooth|bright+|bright->"));
       }
     }
     else if (cmd_args.get(1) == "nec") {
