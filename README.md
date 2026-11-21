@@ -46,7 +46,7 @@
 ## 🇬🇧 English
 
 ### ⚡ Overview
-This is a dedicated, fully optimized port of **ESP32Marauder** specifically crafted for the **LilyGO T-Display S3 (Standard Non-Touch version)**. It features a parallel 8-bit ST7789 IPS LCD driver, two-button hardware navigation, protected RAM allocation, silent background Wi-Fi scanning, and a built-in **IR Blaster transmitter on GPIO 16**.
+This is a dedicated, fully optimized port of **ESP32Marauder** specifically crafted for the **LilyGO T-Display S3 (Standard Non-Touch version)**. It features a parallel 8-bit ST7789 IPS LCD driver, two-button hardware navigation, protected RAM allocation, silent background Wi-Fi scanning, and a built-in **IR Blaster transmitter on GPIO 21**.
 
 > [!NOTE]
 > **No touch screen hardware is required or used.** All menus and functions are fully accessible via the 2 physical buttons.
@@ -59,8 +59,8 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
   - **Single Click:** Scroll down to the next menu item.
 
 ### ✨ Key Features:
-- **📡 Hardware IR Blaster Transmitter (GPIO 16):**
-  - Connect your IR LED through a transistor to **GPIO 16** for maximum range.
+- **📡 Hardware IR Blaster Transmitter (GPIO 21):**
+  - Connect your IR LED through a transistor to **GPIO 21** for maximum range.
   - **Panasonic TV Control:** Power toggle, Mute, Volume +/-, Channel +/-, Input/AV, OK, Menu (Kaseikyo 48-bit protocol at 36.7 kHz).
   - **Window Fairy Lights ("Гірлянда на вікно"):** Full control over all 8 lighting modes (1..8), Brightness DIM +/-, Power ON/OFF, and Timer (NEC 38 kHz with dual burst compatibility).
   - **WS611I RGB LED Strip:** Color selection (Red, Green, Blue, White, etc.), dynamic modes (Flash, Fade, Strobe, Smooth), Brightness and Power.
@@ -85,7 +85,7 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
 | **`TFT_D0..D7`** | `GPIO 39, 40, 41, 42, 45, 46, 47, 48` | 8-bit parallel data bus |
 | **`BUTTON_1`** | `GPIO 0` | BOOT button (Select / Back) |
 | **`BUTTON_2`** | `GPIO 14` | Navigation button (Scroll down) |
-| **`IR_TX`** | **`GPIO 16`** | **Infrared LED Transmitter output (Hardware 38kHz PWM)** |
+| **`IR_TX`** | **`GPIO 21`** | **Infrared LED Transmitter output (Hardware 38kHz PWM)** |
 
 ---
 
@@ -114,7 +114,7 @@ ir loop stop
 ## 🇺🇦 Українська версія
 
 ### ⚡ Огляд
-Це спеціалізований, повністю оптимізований порт **ESP32Marauder** для стандартної плати **LilyGO T-Display S3 (версія БЕЗ сенсорного екрану / Non-Touch)** з підтримкою **ІЧ-передавача на GPIO 16**.  
+Це спеціалізований, повністю оптимізований порт **ESP32Marauder** для стандартної плати **LilyGO T-Display S3 (версія БЕЗ сенсорного екрану / Non-Touch)** з підтримкою **ІЧ-передавача на GPIO 21**.  
 Прошивка містить драйвер 8-бітного паралельного IPS-екрану ST7789 (320x170), надійне двокнопкове керування, безшумне фонове сканування Wi-Fi мереж та меню ІЧ-пульта.
 
 > [!NOTE]
@@ -129,7 +129,7 @@ ir loop stop
 
 ---
 
-### 📡 Можливості ІЧ-передавача (GPIO 16):
+### 📡 Можливості ІЧ-передавача (GPIO 21):
 - **Телевізор Panasonic:** Повноцінний пульт (Power, Mute, гучність +/-, канали +/-, AV/Input, OK, Menu) за протоколом Kaseikyo 48-bit (36.7 кГц).
 - **Гірлянда на вікно (віконні штори-гірлянди):**
   - Усі 8 кнопок режимів (**1..8**): Combination, In Waves, Sequential, Slo-Glo, Chasing, Slow Fade, Twinkle, Steady On.

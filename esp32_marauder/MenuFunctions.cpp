@@ -7957,13 +7957,13 @@ void MenuFunctions::runIrBlinkTest() {
       display_obj.tft.drawRect(10, 26, SCREEN_WIDTH - 20, 44, TFT_WHITE);
       display_obj.tft.setTextColor(TFT_WHITE, boxColor);
       
-      String stateStr = pinState ? "PIN 16: HIGH (LED ON)" : "PIN 16: LOW (LED OFF)";
+      String stateStr = "PIN " + String(pin) + (pinState ? ": HIGH (LED ON)" : ": LOW (LED OFF)");
       display_obj.tft.drawCentreString(stateStr, SCREEN_WIDTH / 2, 32, 2);
       
       String cycleStr = "Blink #" + String(count) + " (500ms cycle)";
       display_obj.tft.drawCentreString(cycleStr, SCREEN_WIDTH / 2, 50, 1);
 
-      addLog("#" + String(count) + " [" + String(now / 1000) + "s] Pin 16 -> " + (pinState ? "HIGH (ON)" : "LOW (OFF)"));
+      addLog("#" + String(count) + " [" + String(now / 1000) + "s] Pin " + String(pin) + " -> " + (pinState ? "HIGH (ON)" : "LOW (OFF)"));
     }
 
     delay(10);

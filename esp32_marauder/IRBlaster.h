@@ -7,7 +7,7 @@
 #include "configs.h"
 
 #ifndef IR_TX_PIN
-  #define IR_TX_PIN 16
+  #define IR_TX_PIN 21
 #endif
 
 #ifndef IR_LEDC_CHANNEL
