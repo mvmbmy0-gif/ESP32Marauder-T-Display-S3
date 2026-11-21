@@ -1,4 +1,5 @@
 #include "CommandLine.h"
+#include "IRBlaster.h"
 
 // GCOVR_EXCL_START -- serial protocol output depends on Arduino Serial.
 namespace {
@@ -291,6 +292,9 @@ void CommandLine::runCommand(String input) {
     #endif
     // GCOVR_EXCL_STOP
     Serial.println(HELP_LED_CMD);
+    #ifdef HAS_IR
+      Serial.println(HELP_IR_CMD);
+    #endif
     Serial.println(HELP_GPS_DATA_CMD);
     Serial.println(HELP_GPS_CMD);
     Serial.println(HELP_NMEA_CMD);
@@ -574,6 +578,116 @@ void CommandLine::runCommand(String input) {
       }
     #endif
   }
+  #ifdef HAS_IR
+  else if (cmd_args.get(0) == IR_CLI_CMD) {
+    if (cmd_args.size() <= 1 || cmd_args.get(1) == "help") {
+      Serial.println(F("\n--- ESP32 Marauder IR Blaster (GPIO 16) ---"));
+      Serial.println(F("ir tv <power|mute|vol+|vol-|ch+|ch-|input|ok|menu>"));
+      Serial.println(F("ir fairy <on|off|1..8|dim+|dim-|timer>"));
+      Serial.println(F("ir led <on|off|red|green|blue|white|flash|fade|strobe|smooth|bright+|bright->"));
+      Serial.println(F("ir nec <32-bit hex> (e.g. ir nec 0x00FF02FD)"));
+      Serial.println(F("ir panasonic <48-bit hex> (e.g. ir panasonic 0x40040100BCBD)"));
+      Serial.println(F("ir loop start [fairy|led|tv|all] [interval_ms] (default 3000ms)"));
+      Serial.println(F("ir loop stop"));
+      Serial.println(F("-------------------------------------------\n"));
+    }
+    else if (cmd_args.get(1) == "tv") {
+      if (cmd_args.size() > 2) {
+        String sub = cmd_args.get(2);
+        sub.toLowerCase();
+        if (sub == "power") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_POWER);
+        else if (sub == "mute") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_MUTE);
+        else if (sub == "vol+") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_VOL_UP);
+        else if (sub == "vol-") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_VOL_DOWN);
+        else if (sub == "ch+") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_CH_UP);
+        else if (sub == "ch-") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_CH_DOWN);
+        else if (sub == "input" || sub == "av") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_INPUT);
+        else if (sub == "ok" || sub == "enter") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_OK);
+        else if (sub == "menu") ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_MENU);
+        else Serial.println(F("Unknown TV command"));
+      } else {
+        Serial.println(F("Usage: ir tv <power|mute|vol+|vol-|ch+|ch-|input|ok|menu>"));
+      }
+    }
+    else if (cmd_args.get(1) == "fairy") {
+      if (cmd_args.size() > 2) {
+        String sub = cmd_args.get(2);
+        sub.toLowerCase();
+        if (sub == "on") ir_blaster_obj.sendFairyLights(FAIRY_CMD_ON);
+        else if (sub == "off") ir_blaster_obj.sendFairyLights(FAIRY_CMD_OFF);
+        else if (sub == "1") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_1);
+        else if (sub == "2") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_2);
+        else if (sub == "3") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_3);
+        else if (sub == "4") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_4);
+        else if (sub == "5") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_5);
+        else if (sub == "6") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_6);
+        else if (sub == "7") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_7);
+        else if (sub == "8") ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_8);
+        else if (sub == "dim+" || sub == "bright+") ir_blaster_obj.sendFairyLights(FAIRY_CMD_DIM_UP);
+        else if (sub == "dim-" || sub == "bright-") ir_blaster_obj.sendFairyLights(FAIRY_CMD_DIM_DOWN);
+        else if (sub == "timer") ir_blaster_obj.sendFairyLights(FAIRY_CMD_TIMER);
+        else Serial.println(F("Unknown fairy lights command"));
+      } else {
+        Serial.println(F("Usage: ir fairy <on|off|1..8|dim+|dim-|timer>"));
+      }
+    }
+    else if (cmd_args.get(1) == "led") {
+      if (cmd_args.size() > 2) {
+        String sub = cmd_args.get(2);
+        sub.toLowerCase();
+        if (sub == "on") ir_blaster_obj.sendLEDStrip(LED_CMD_POWER_ON);
+        else if (sub == "off") ir_blaster_obj.sendLEDStrip(LED_CMD_POWER_OFF);
+        else if (sub == "red") ir_blaster_obj.sendLEDStrip(LED_CMD_RED);
+        else if (sub == "green") ir_blaster_obj.sendLEDStrip(LED_CMD_GREEN);
+        else if (sub == "blue") ir_blaster_obj.sendLEDStrip(LED_CMD_BLUE);
+        else if (sub == "white") ir_blaster_obj.sendLEDStrip(LED_CMD_WHITE);
+        else if (sub == "flash") ir_blaster_obj.sendLEDStrip(LED_CMD_FLASH);
+        else if (sub == "fade") ir_blaster_obj.sendLEDStrip(LED_CMD_FADE);
+        else if (sub == "strobe") ir_blaster_obj.sendLEDStrip(LED_CMD_STROBE);
+        else if (sub == "smooth") ir_blaster_obj.sendLEDStrip(LED_CMD_SMOOTH);
+        else if (sub == "bright+" || sub == "dim+") ir_blaster_obj.sendLEDStrip(LED_CMD_BRIGHT_UP);
+        else if (sub == "bright-" || sub == "dim-") ir_blaster_obj.sendLEDStrip(LED_CMD_BRIGHT_DOWN);
+        else Serial.println(F("Unknown LED strip command"));
+      } else {
+        Serial.println(F("Usage: ir led <on|off|red|green|blue|white|flash|fade|strobe|smooth|bright+|bright->"));
+      }
+    }
+    else if (cmd_args.get(1) == "nec") {
+      if (cmd_args.size() > 2) {
+        uint32_t code = strtoul(cmd_args.get(2).c_str(), NULL, 16);
+        ir_blaster_obj.sendNEC32(code);
+        Serial.printf("[IR] Sent raw NEC: 0x%08X\n", code);
+      }
+    }
+    else if (cmd_args.get(1) == "panasonic") {
+      if (cmd_args.size() > 2) {
+        uint64_t code = strtoull(cmd_args.get(2).c_str(), NULL, 16);
+        ir_blaster_obj.sendPanasonic48(code);
+        Serial.printf("[IR] Sent raw Panasonic 48-bit: 0x%llX\n", code);
+      }
+    }
+    else if (cmd_args.get(1) == "loop") {
+      if (cmd_args.size() > 2 && (cmd_args.get(2) == "stop" || cmd_args.get(2) == "0")) {
+        ir_blaster_obj.stopLoop();
+      } else {
+        IRLoopTarget tgt = IR_LOOP_FAIRY_LIGHTS;
+        if (cmd_args.size() > 2) {
+          String t = cmd_args.get(2);
+          if (t == "led") tgt = IR_LOOP_LED_STRIP;
+          else if (t == "tv") tgt = IR_LOOP_PANASONIC_TV;
+          else if (t == "all") tgt = IR_LOOP_UNIVERSAL_ALL;
+        }
+        uint32_t interval = 3000;
+        if (cmd_args.size() > 3) interval = cmd_args.get(3).toInt();
+        if (interval < 500) interval = 500;
+        ir_blaster_obj.startLoop(tgt, interval);
+      }
+    }
+    else {
+      Serial.println(F("Unknown IR subcommand. Type 'ir help' for guide."));
+    }
+  }
+  #endif
   // ls command
   else if (cmd_args.get(0) == LS_CMD) {
     #ifdef HAS_SD

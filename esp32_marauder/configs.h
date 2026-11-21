@@ -361,6 +361,8 @@
     #define HAS_FULL_SCREEN
     #define BOARD_POWERON_PIN 15
     #define HAS_PSRAM
+    #define HAS_IR
+    #define IR_TX_PIN 16
   #endif
 
   #ifdef MARAUDER_V4

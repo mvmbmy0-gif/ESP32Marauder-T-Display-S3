@@ -230,6 +230,13 @@ class MenuFunctions
     #endif
     Menu badusbMenu;
     Menu deviceMenu;
+    #ifdef HAS_IR
+      Menu irMenu;
+      Menu irTvMenu;
+      Menu irFairyMenu;
+      Menu irLedMenu;
+      Menu irLoopMenu;
+    #endif
 
     // Device menu stuff
     //Menu whichUpdateMenu;

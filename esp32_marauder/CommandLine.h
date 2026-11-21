@@ -71,6 +71,7 @@ const char PROGMEM RESTORE_SPIFFS_CMD[] = "restorespiffs";
 const char PROGMEM LED_CMD[] = "led";
 const char PROGMEM GPS_DATA_CMD[] = "gpsdata";
 const char PROGMEM GPS_CMD[] = "gps";
+const char PROGMEM IR_CLI_CMD[] = "ir";
 const char PROGMEM NMEA_CMD[] = "nmea";
 const char PROGMEM GPS_POI_CMD[] = "gpspoi";
 const char PROGMEM GPS_TRACKER_CMD[] = "gpstracker";
@@ -156,6 +157,7 @@ const char PROGMEM HELP_RESTORE_SPIFFS_CMD[] = "restorespiffs [--machine <transa
 const char PROGMEM HELP_LED_CMD[] = "led -s <hex color>/-p <rainbow>";
 const char PROGMEM HELP_GPS_DATA_CMD[] = "gpsdata";
 const char PROGMEM HELP_GPS_CMD[] = "gps [-t] [-g] <fix/sat/lon/lat/alt/date/accuracy/text/nmea>\r\n    [-n] <native/all/gps/glonass/galileo/navic/qzss/beidou>\r\n         [-b = use BD vs GB for beidou]";
+const char PROGMEM HELP_IR_CMD[] = "ir <tv|fairy|led|loop|nec|panasonic> [args]";
 const char PROGMEM HELP_GPS_POI_CMD[] = "gpspoi -s/-m/-e";
 const char PROGMEM HELP_GPS_TRACKER_CMD[] = "gpstracker -c <start/stop>";
 const char PROGMEM HELP_RECON_CMD[] = "recon wifi|ble|status|stop";

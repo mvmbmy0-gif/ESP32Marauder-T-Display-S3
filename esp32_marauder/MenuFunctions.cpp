@@ -4,6 +4,7 @@
 #include "OwnedListLifecycle.h"
 #include "CensorText.h"
 #include "lang_var.h"
+#include "IRBlaster.h"
 #if defined(HAS_CSI_MOTION)
   #include "CsiMotionMonitor.h"
 #endif
@@ -2969,6 +2970,182 @@ void MenuFunctions::RunSetup()
 
   // Device menu
   deviceMenu.parentMenu = &mainMenu;
+
+#ifdef HAS_IR
+  irMenu.list = new LinkedList<MenuNode>();
+  irTvMenu.list = new LinkedList<MenuNode>();
+  irFairyMenu.list = new LinkedList<MenuNode>();
+  irLedMenu.list = new LinkedList<MenuNode>();
+  irLoopMenu.list = new LinkedList<MenuNode>();
+
+  irMenu.name = "IR Remote";
+  irTvMenu.name = "Panasonic TV";
+  irFairyMenu.name = "Window Lights";
+  irLedMenu.name = "WS611I LED";
+  irLoopMenu.name = "IR 3s Loop";
+
+  irMenu.parentMenu = &mainMenu;
+  irTvMenu.parentMenu = &irMenu;
+  irFairyMenu.parentMenu = &irMenu;
+  irLedMenu.parentMenu = &irMenu;
+  irLoopMenu.parentMenu = &irMenu;
+
+  // Build irMenu
+  this->addNodes(&irMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irMenu.parentMenu, true);
+  });
+  this->addNodes(&irMenu, "Window Lights (1-8)", TFTYELLOW, GENERAL_APPS, [this]() {
+    this->changeMenu(&irFairyMenu, true);
+  });
+  this->addNodes(&irMenu, "WS611I LED Strip", TFTGREEN, GENERAL_APPS, [this]() {
+    this->changeMenu(&irLedMenu, true);
+  });
+  this->addNodes(&irMenu, "Panasonic TV", TFTCYAN, GENERAL_APPS, [this]() {
+    this->changeMenu(&irTvMenu, true);
+  });
+  this->addNodes(&irMenu, "IR 3s Loop (Test)", TFTMAGENTA, BEACON_SPAM, [this]() {
+    this->changeMenu(&irLoopMenu, true);
+  });
+
+  // Build irTvMenu (Panasonic TV)
+  this->addNodes(&irTvMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irTvMenu.parentMenu, true);
+  });
+  this->addNodes(&irTvMenu, "Power (Вкл/Викл)", TFTRED, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_POWER);
+  });
+  this->addNodes(&irTvMenu, "Mute (Звук)", TFTORANGE, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_MUTE);
+  });
+  this->addNodes(&irTvMenu, "Volume +", TFTGREEN, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_VOL_UP);
+  });
+  this->addNodes(&irTvMenu, "Volume -", TFTGREEN, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_VOL_DOWN);
+  });
+  this->addNodes(&irTvMenu, "Channel +", TFTCYAN, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_CH_UP);
+  });
+  this->addNodes(&irTvMenu, "Channel -", TFTCYAN, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_CH_DOWN);
+  });
+  this->addNodes(&irTvMenu, "Input / AV", TFTYELLOW, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_INPUT);
+  });
+  this->addNodes(&irTvMenu, "OK / Enter", TFTWHITE, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_OK);
+  });
+  this->addNodes(&irTvMenu, "Menu", TFTLIGHTGREY, 0, []() {
+    ir_blaster_obj.sendPanasonicTV(PANASONIC_CMD_MENU);
+  });
+
+  // Build irFairyMenu (Window Curtain 8-mode Garland)
+  this->addNodes(&irFairyMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irFairyMenu.parentMenu, true);
+  });
+  this->addNodes(&irFairyMenu, "Power ON (Вкл)", TFTGREEN, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_ON);
+  });
+  this->addNodes(&irFairyMenu, "Power OFF (Викл)", TFTRED, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_OFF);
+  });
+  this->addNodes(&irFairyMenu, "1: Combination", TFTYELLOW, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_1);
+  });
+  this->addNodes(&irFairyMenu, "2: In Waves", TFTCYAN, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_2);
+  });
+  this->addNodes(&irFairyMenu, "3: Sequential", TFTMAGENTA, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_3);
+  });
+  this->addNodes(&irFairyMenu, "4: Slo-Glo", TFTBLUE, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_4);
+  });
+  this->addNodes(&irFairyMenu, "5: Chasing", TFTORANGE, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_5);
+  });
+  this->addNodes(&irFairyMenu, "6: Slow Fade", TFTGREEN, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_6);
+  });
+  this->addNodes(&irFairyMenu, "7: Twinkle", TFTCYAN, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_7);
+  });
+  this->addNodes(&irFairyMenu, "8: Steady On", TFTWHITE, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_MODE_8);
+  });
+  this->addNodes(&irFairyMenu, "Brightness +", TFTYELLOW, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_DIM_UP);
+  });
+  this->addNodes(&irFairyMenu, "Brightness -", TFTLIGHTGREY, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_DIM_DOWN);
+  });
+  this->addNodes(&irFairyMenu, "Timer (6h)", TFTORANGE, 0, []() {
+    ir_blaster_obj.sendFairyLights(FAIRY_CMD_TIMER);
+  });
+
+  // Build irLedMenu (WS611I LED Strip)
+  this->addNodes(&irLedMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irLedMenu.parentMenu, true);
+  });
+  this->addNodes(&irLedMenu, "Power ON", TFTGREEN, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_POWER_ON);
+  });
+  this->addNodes(&irLedMenu, "Power OFF", TFTRED, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_POWER_OFF);
+  });
+  this->addNodes(&irLedMenu, "Red (Червоний)", TFTRED, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_RED);
+  });
+  this->addNodes(&irLedMenu, "Green (Зелений)", TFTGREEN, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_GREEN);
+  });
+  this->addNodes(&irLedMenu, "Blue (Синій)", TFTBLUE, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_BLUE);
+  });
+  this->addNodes(&irLedMenu, "White (Білий)", TFTWHITE, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_WHITE);
+  });
+  this->addNodes(&irLedMenu, "Flash Effect", TFTYELLOW, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_FLASH);
+  });
+  this->addNodes(&irLedMenu, "Fade Effect", TFTMAGENTA, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_FADE);
+  });
+  this->addNodes(&irLedMenu, "Strobe Effect", TFTCYAN, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_STROBE);
+  });
+  this->addNodes(&irLedMenu, "Brightness +", TFTYELLOW, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_BRIGHT_UP);
+  });
+  this->addNodes(&irLedMenu, "Brightness -", TFTLIGHTGREY, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_BRIGHT_DOWN);
+  });
+
+  // Build irLoopMenu (3-Second Loop / Test Mode)
+  this->addNodes(&irLoopMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irLoopMenu.parentMenu, true);
+  });
+  this->addNodes(&irLoopMenu, "Fairy 3s Loop (1..8)", TFTYELLOW, BEACON_SPAM, [this]() {
+    ir_blaster_obj.startLoop(IR_LOOP_FAIRY_LIGHTS, 3000);
+    this->updateStatusBar();
+  });
+  this->addNodes(&irLoopMenu, "LED 3s Loop (Colors)", TFTGREEN, BEACON_SPAM, [this]() {
+    ir_blaster_obj.startLoop(IR_LOOP_LED_STRIP, 3000);
+    this->updateStatusBar();
+  });
+  this->addNodes(&irLoopMenu, "TV Power 3s Loop", TFTCYAN, BEACON_SPAM, [this]() {
+    ir_blaster_obj.startLoop(IR_LOOP_PANASONIC_TV, 3000);
+    this->updateStatusBar();
+  });
+  this->addNodes(&irLoopMenu, "All Burst 3s Loop", TFTMAGENTA, BEACON_SPAM, [this]() {
+    ir_blaster_obj.startLoop(IR_LOOP_UNIVERSAL_ALL, 3000);
+    this->updateStatusBar();
+  });
+  this->addNodes(&irLoopMenu, "STOP Loop", TFTRED, 0, [this]() {
+    ir_blaster_obj.stopLoop();
+    this->updateStatusBar();
+  });
+#endif
 
   // Save Files Menu
   saveFileMenu.parentMenu = &deviceMenu;
@@ -6128,6 +6305,11 @@ void MenuFunctions::buildLazyMenu(Menu* menu)
       this->addNodes(menu, text_table1[9], TFTBLUE, DEVICE, [this]() {
         this->changeMenu(&deviceMenu, true);
       });
+      #ifdef HAS_IR
+        this->addNodes(menu, "IR Remote", TFTYELLOW, GENERAL_APPS, [this]() {
+          this->changeMenu(&irMenu, true);
+        });
+      #endif
       this->addNodes(menu, text_table1[30], TFTLIGHTGREY, REBOOT, []() {
         ESP.restart();
       });

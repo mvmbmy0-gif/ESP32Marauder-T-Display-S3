@@ -9,7 +9,7 @@
 </p>
 
 # ESP32Marauder for LilyGO T-Display S3
-### 📟 Standard Non-Touch Version / Звичайна версія БЕЗ тачскріну
+### 📟 Standard Non-Touch Version + 📡 IR Blaster Edition
 
 > [!IMPORTANT]
 > 🔴 **NON-TOUCH VERSION (ВЕРСІЯ БЕЗ СЕНСОРНОГО ЕКРАНУ)**  
@@ -34,7 +34,7 @@
 ├── 🌟 all_in_one/           <- Універсальна папка: абсолютно всі файли проєкту в одному місці (бінарники, скрипти, код)
 ├── 📦 firmware_binaries/    <- Готові бінарники (merged.bin, firmware.bin, bootloader, partitions)
 ├── ⚡ flashing_tools/       <- Усе для прошивки: готові скрипти (.sh, .bat) та Web Flasher гід
-├── 💻 esp32_marauder/       <- Чистий вихідний код прошивки під LilyGO T-Display S3
+├── 💻 esp32_marauder/       <- Чистий вихідний код прошивки під LilyGO T-Display S3 (+ IR Blaster)
 ├── 🖼️ pictures/             <- Логотип проєкту
 ├── 📄 platformio.ini        <- Конфігурація для збірки в PlatformIO
 └── 📄 README.md             <- Головна документація
@@ -46,7 +46,7 @@
 ## 🇬🇧 English
 
 ### ⚡ Overview
-This is a dedicated, fully optimized port of **ESP32Marauder** specifically crafted for the **LilyGO T-Display S3 (Standard Non-Touch version)**. It features a parallel 8-bit ST7789 IPS LCD driver, two-button hardware navigation, protected RAM allocation, and silent background Wi-Fi scanning.
+This is a dedicated, fully optimized port of **ESP32Marauder** specifically crafted for the **LilyGO T-Display S3 (Standard Non-Touch version)**. It features a parallel 8-bit ST7789 IPS LCD driver, two-button hardware navigation, protected RAM allocation, silent background Wi-Fi scanning, and a built-in **IR Blaster transmitter on GPIO 16**.
 
 > [!NOTE]
 > **No touch screen hardware is required or used.** All menus and functions are fully accessible via the 2 physical buttons.
@@ -59,6 +59,12 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
   - **Single Click:** Scroll down to the next menu item.
 
 ### ✨ Key Features:
+- **📡 Hardware IR Blaster Transmitter (GPIO 16):**
+  - Connect your IR LED through a transistor to **GPIO 16** for maximum range.
+  - **Panasonic TV Control:** Power toggle, Mute, Volume +/-, Channel +/-, Input/AV, OK, Menu (Kaseikyo 48-bit protocol at 36.7 kHz).
+  - **Window Fairy Lights ("Гірлянда на вікно"):** Full control over all 8 lighting modes (1..8), Brightness DIM +/-, Power ON/OFF, and Timer (NEC 38 kHz with dual burst compatibility).
+  - **WS611I RGB LED Strip:** Color selection (Red, Green, Blue, White, etc.), dynamic modes (Flash, Fade, Strobe, Smooth), Brightness and Power.
+  - **3-Second Periodic Test Loop:** Automatically sends test signals every 3 seconds to test range and receiver responsiveness without touching buttons.
 - **Parallel 8-bit ST7789 Display Driver:** High frame rate via 8080-I 8-bit bus, custom 320x170 landscape layout, and hardware framebuffer readback for screenshots over serial (`screen` command).
 - **Silent Background Auto-Scanning:** Sniffer and attack menus (`AP Clone Spam`, `Probe Req Flood`, `Deauth Flood`, `Select APs`, etc.) immediately launch in operational mode, scanning channels in the background and populating AP lists automatically.
 - **RuntimeMemoryGuard:** Internal memory protection ensuring stable operation and >200KB free heap during continuous scanning.
@@ -79,6 +85,20 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
 | **`TFT_D0..D7`** | `GPIO 39, 40, 41, 42, 45, 46, 47, 48` | 8-bit parallel data bus |
 | **`BUTTON_1`** | `GPIO 0` | BOOT button (Select / Back) |
 | **`BUTTON_2`** | `GPIO 14` | Navigation button (Scroll down) |
+| **`IR_TX`** | **`GPIO 16`** | **Infrared LED Transmitter output (Hardware 38kHz PWM)** |
+
+---
+
+### 💻 IR CLI Commands (Serial Terminal)
+```text
+ir tv <power|mute|vol+|vol-|ch+|ch-|input|ok|menu>
+ir fairy <on|off|1..8|dim+|dim-|timer>
+ir led <on|off|red|green|blue|white|flash|fade|strobe|smooth|bright+|bright->
+ir nec <32-bit hex>              (e.g. ir nec 0x00FF02FD)
+ir panasonic <48-bit hex>        (e.g. ir panasonic 0x40040100BCBD)
+ir loop start [fairy|led|tv|all] [interval_ms]  (starts automated loop, default 3000ms)
+ir loop stop
+```
 
 ---
 
@@ -94,8 +114,8 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
 ## 🇺🇦 Українська версія
 
 ### ⚡ Огляд
-Це спеціалізований, повністю оптимізований порт **ESP32Marauder** для стандартної плати **LilyGO T-Display S3 (версія БЕЗ сенсорного екрану / Non-Touch)**.  
-Прошивка містить драйвер 8-бітного паралельного IPS-екрану ST7789 (320x170), надійне двокнопкове керування та безшумне фонове сканування Wi-Fi мереж.
+Це спеціалізований, повністю оптимізований порт **ESP32Marauder** для стандартної плати **LilyGO T-Display S3 (версія БЕЗ сенсорного екрану / Non-Touch)** з підтримкою **ІЧ-передавача на GPIO 16**.  
+Прошивка містить драйвер 8-бітного паралельного IPS-екрану ST7789 (320x170), надійне двокнопкове керування, безшумне фонове сканування Wi-Fi мереж та меню ІЧ-пульта.
 
 > [!NOTE]
 > **Тачскрін не потрібен!** Усе керування оптимізовано під дві зручні фізичні кнопки на корпусі плати.
@@ -106,6 +126,20 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
   - **Довге утримання (>800 мс):** Назад / Вихід з поточного меню / Зупинка сканування чи атаки.
 - **Права кнопка (`GPIO 14`):**
   - **Короткий клік:** Гортання списку пунктів меню вниз (Scroll Down).
+
+---
+
+### 📡 Можливості ІЧ-передавача (GPIO 16):
+- **Телевізор Panasonic:** Повноцінний пульт (Power, Mute, гучність +/-, канали +/-, AV/Input, OK, Menu) за протоколом Kaseikyo 48-bit (36.7 кГц).
+- **Гірлянда на вікно (віконні штори-гірлянди):**
+  - Усі 8 кнопок режимів (**1..8**): Combination, In Waves, Sequential, Slo-Glo, Chasing, Slow Fade, Twinkle, Steady On.
+  - Керування яскравістю: **DIM +** та **DIM -**.
+  - Кнопки **Вкл**, **Викл** та **Таймер (6 год)**.
+  - Відправляє подвійний пакет (основний та альтернативний), що забезпечує 100% сумісність з усіма партіями китайських гірлянд.
+- **LED-стрічка WS611I:** Вибір кольорів (Червоний, Зелений, Синій, Білий тощо), ефекти (Flash, Fade, Strobe, Smooth), яскравість та живлення.
+- **Тестовий цикл кожні 3 секунди (3s Loop):**
+  - Автоматично надсилає ІЧ-сигнали кожні 3 секунди без необхідності тиснути кнопки.
+  - Зручно для перевірки дистанції, кута розсіювання та потужності транзистора.
 
 ---
 
