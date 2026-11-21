@@ -3006,6 +3006,9 @@ void MenuFunctions::RunSetup()
   this->addNodes(&irMenu, "IR 3s Loop (Test)", TFTMAGENTA, BEACON_SPAM, [this]() {
     this->changeMenu(&irLoopMenu, true);
   });
+  this->addNodes(&irMenu, "IR Blink & Log Test", TFTORANGE, BEACON_SPAM, [this]() {
+    this->runIrBlinkTest();
+  });
 
   // Build irTvMenu (Panasonic TV)
   this->addNodes(&irTvMenu, text09, TFTLIGHTGREY, 0, [this]() {
@@ -3140,6 +3143,9 @@ void MenuFunctions::RunSetup()
   this->addNodes(&irLoopMenu, "All Burst 3s Loop", TFTMAGENTA, BEACON_SPAM, [this]() {
     ir_blaster_obj.startLoop(IR_LOOP_UNIVERSAL_ALL, 3000);
     this->updateStatusBar();
+  });
+  this->addNodes(&irLoopMenu, "IR Blink & Log Test", TFTORANGE, BEACON_SPAM, [this]() {
+    this->runIrBlinkTest();
   });
   this->addNodes(&irLoopMenu, "STOP Loop", TFTRED, 0, [this]() {
     ir_blaster_obj.stopLoop();
@@ -7863,5 +7869,111 @@ void MenuFunctions::dumpMenuStatus() {
   }
   Serial.println(F("=== END MENU DUMP ==="));
 }
+
+#ifdef HAS_IR
+void MenuFunctions::runIrBlinkTest() {
+  display_obj.clearScreen();
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  display_obj.tft.setTextWrap(false);
+
+  // Top header banner
+  display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
+  display_obj.tft.drawCentreString("IR BLINK & LOG TEST", SCREEN_WIDTH / 2, 4, 2);
+
+  // Bottom exit prompt
+  display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display_obj.tft.drawCentreString("Press BOOT (IO 0) to Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+
+  // Pin setup
+  const uint8_t pin = IR_TX_PIN;
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+
+  // Circular log buffer for on-screen lines
+  const uint8_t MAX_LOG_LINES = 7;
+  String logLines[MAX_LOG_LINES];
+  for (uint8_t i = 0; i < MAX_LOG_LINES; i++) logLines[i] = "";
+  uint8_t logCount = 0;
+
+  auto addLog = [&](const String& msg) {
+    if (logCount < MAX_LOG_LINES) {
+      logLines[logCount++] = msg;
+    } else {
+      for (uint8_t i = 0; i < MAX_LOG_LINES - 1; i++) {
+        logLines[i] = logLines[i + 1];
+      }
+      logLines[MAX_LOG_LINES - 1] = msg;
+    }
+    uint16_t logStartY = 76;
+    display_obj.tft.fillRect(0, logStartY, SCREEN_WIDTH, MAX_LOG_LINES * 12 + 4, TFT_BLACK);
+    display_obj.tft.setTextSize(1);
+    for (uint8_t i = 0; i < logCount; i++) {
+      if (logLines[i].indexOf("HIGH") >= 0 || logLines[i].indexOf("ON") >= 0)
+        display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
+      else if (logLines[i].indexOf("LOW") >= 0 || logLines[i].indexOf("OFF") >= 0)
+        display_obj.tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+      else
+        display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      display_obj.tft.setCursor(6, logStartY + i * 12);
+      display_obj.tft.print(logLines[i]);
+    }
+    Serial.println(msg);
+  };
+
+  addLog("[INIT] Pin " + String(pin) + " ready, starting blink...");
+
+  bool pinState = false;
+  uint32_t count = 0;
+  uint32_t lastToggle = millis();
+
+  // Wait until user releases BOOT button so we don't immediately exit
+  while (digitalRead(0) == LOW) {
+    delay(10);
+  }
+
+  while (true) {
+    uint32_t now = millis();
+
+    // Check exit button: BOOT (GPIO 0)
+    if (digitalRead(0) == LOW) {
+      while (digitalRead(0) == LOW) {
+        delay(10);
+      }
+      break;
+    }
+
+    // Toggle every 500 ms
+    if (now - lastToggle >= 500) {
+      lastToggle = now;
+      pinState = !pinState;
+      digitalWrite(pin, pinState ? HIGH : LOW);
+      count++;
+
+      // Draw large visual status box
+      uint16_t boxColor = pinState ? TFT_RED : 0x18E3;
+      display_obj.tft.fillRect(10, 26, SCREEN_WIDTH - 20, 44, boxColor);
+      display_obj.tft.drawRect(10, 26, SCREEN_WIDTH - 20, 44, TFT_WHITE);
+      display_obj.tft.setTextColor(TFT_WHITE, boxColor);
+      
+      String stateStr = pinState ? "PIN 16: HIGH (LED ON)" : "PIN 16: LOW (LED OFF)";
+      display_obj.tft.drawCentreString(stateStr, SCREEN_WIDTH / 2, 32, 2);
+      
+      String cycleStr = "Blink #" + String(count) + " (500ms cycle)";
+      display_obj.tft.drawCentreString(cycleStr, SCREEN_WIDTH / 2, 50, 1);
+
+      addLog("#" + String(count) + " [" + String(now / 1000) + "s] Pin 16 -> " + (pinState ? "HIGH (ON)" : "LOW (OFF)"));
+    }
+
+    delay(10);
+  }
+
+  // Cleanup: ensure pin 16 is LOW on exit
+  digitalWrite(pin, LOW);
+  display_obj.init();
+  this->changeMenu(current_menu, true);
+}
+#endif
 
 #endif

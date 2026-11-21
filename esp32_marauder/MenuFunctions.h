@@ -236,6 +236,7 @@ class MenuFunctions
       Menu irFairyMenu;
       Menu irLedMenu;
       Menu irLoopMenu;
+      void runIrBlinkTest();
     #endif
 
     // Device menu stuff
