@@ -14,9 +14,20 @@ struct RawIrCode;
   #define IR_TX_PIN 20
 #endif
 
+#ifndef IR_RX_PIN
+  #define IR_RX_PIN 21
+#endif
+
 #ifndef IR_LEDC_CHANNEL
   #define IR_LEDC_CHANNEL 2
 #endif
+
+// TV-B-Gone Batch Types
+enum TVBGoneBatchType {
+  TVB_BATCH_ALL_EU_THEN_NA = 0,
+  TVB_BATCH_EU = 1,
+  TVB_BATCH_NA = 2
+};
 
 // Panasonic TV Commands (48-bit Kaseikyo format)
 #define PANASONIC_CMD_POWER    0xBC  // 0x40040100BCBD
@@ -78,8 +89,11 @@ enum IRLoopTarget {
 class IRBlaster {
   private:
     uint8_t pin;
+    uint8_t rx_pin;
     uint8_t channel;
     uint32_t current_freq;
+    uint8_t tx_repeats;
+    uint8_t jammer_mode;
     bool initialized;
 
     // Loop state
@@ -112,9 +126,33 @@ class IRBlaster {
     bool runTVBGoneBatch(uint8_t batch_type = 0, std::function<bool(uint16_t current, uint16_t total, const char* name)> progressCb = nullptr);
     void sendJamBurst(uint8_t mode = 0, uint32_t freq_hz = 38000);
 
-    // Dynamic Pin configuration
+    // Dynamic Pin & Settings Configuration (Bruce IR Config port + NVS storage)
     void setPin(uint8_t new_pin);
     uint8_t getPin() const { return pin; }
+    void cycleTxPin();
+
+    uint8_t getRxPin() const { return rx_pin; }
+    void setRxPin(uint8_t new_rx);
+    void cycleRxPin();
+
+    uint8_t getRepeats() const { return tx_repeats; }
+    void setRepeats(uint8_t r);
+    void cycleRepeats();
+
+    uint32_t getFrequency() const { return current_freq; }
+    void setConfigFrequency(uint32_t f);
+    void cycleFrequency();
+
+    uint8_t getJammerMode() const { return jammer_mode; }
+    void setJammerMode(uint8_t m);
+    void cycleJammerMode();
+    String getJammerModeName() const;
+
+    void loadSettings();
+    void saveSettings();
+
+    // IR Signal Receiver / Sniffer (Bruce IR Read port)
+    bool readIRSignal(String &proto, uint32_t &addr, uint32_t &cmd, uint32_t &raw, uint16_t &bits);
 
     // Device helpers
     void sendPanasonicTV(uint8_t cmd);

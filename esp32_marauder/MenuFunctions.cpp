@@ -2973,46 +2973,102 @@ void MenuFunctions::RunSetup()
 
 #ifdef HAS_IR
   irMenu.list = new LinkedList<MenuNode>();
+  irTvBGoneMenu.list = new LinkedList<MenuNode>();
+  irJammerMenu.list = new LinkedList<MenuNode>();
+  irCustomMenu.list = new LinkedList<MenuNode>();
   irTvMenu.list = new LinkedList<MenuNode>();
   irFairyMenu.list = new LinkedList<MenuNode>();
   irLedMenu.list = new LinkedList<MenuNode>();
   irLoopMenu.list = new LinkedList<MenuNode>();
+  irConfigMenu.list = new LinkedList<MenuNode>();
 
   irMenu.name = "IR Remote";
+  irTvBGoneMenu.name = "TV-B-Gone";
+  irJammerMenu.name = "IR Jammer";
+  irCustomMenu.name = "Custom Remotes";
   irTvMenu.name = "Panasonic TV";
   irFairyMenu.name = "Window Lights";
   irLedMenu.name = "SP611E LED";
   irLoopMenu.name = "IR 3s Loop";
+  irConfigMenu.name = "IR Config";
 
   irMenu.parentMenu = &mainMenu;
-  irTvMenu.parentMenu = &irMenu;
-  irFairyMenu.parentMenu = &irMenu;
-  irLedMenu.parentMenu = &irMenu;
-  irLoopMenu.parentMenu = &irMenu;
+  irTvBGoneMenu.parentMenu = &irMenu;
+  irJammerMenu.parentMenu = &irMenu;
+  irCustomMenu.parentMenu = &irMenu;
+  irConfigMenu.parentMenu = &irMenu;
 
-  // Build irMenu
+  irTvMenu.parentMenu = &irCustomMenu;
+  irFairyMenu.parentMenu = &irCustomMenu;
+  irLedMenu.parentMenu = &irCustomMenu;
+  irLoopMenu.parentMenu = &irCustomMenu;
+
+  // Build irMenu (Root IR Menu)
   this->addNodes(&irMenu, text09, TFTLIGHTGREY, 0, [this]() {
     this->changeMenu(irMenu.parentMenu, true);
   });
-  this->addNodes(&irMenu, "TV-B-Gone (All TVs)", TFTRED, BEACON_SPAM, [this]() {
-    this->runTVBGone();
+  this->addNodes(&irMenu, "TV-B-Gone", TFTRED, BEACON_SPAM, [this]() {
+    this->changeMenu(&irTvBGoneMenu, true);
   });
-  this->addNodes(&irMenu, "IR Jammer (Attack)", TFTMAGENTA, BEACON_SPAM, [this]() {
-    this->runIrJammer();
+  this->addNodes(&irMenu, "IR Jammer", TFTMAGENTA, BEACON_SPAM, [this]() {
+    this->changeMenu(&irJammerMenu, true);
   });
-  this->addNodes(&irMenu, "Window Lights (1-8)", TFTYELLOW, GENERAL_APPS, [this]() {
-    this->changeMenu(&irFairyMenu, true);
+  this->addNodes(&irMenu, "Custom Remotes", TFTGREEN, GENERAL_APPS, [this]() {
+    this->changeMenu(&irCustomMenu, true);
   });
-  this->addNodes(&irMenu, "SP611E LED Strip", TFTGREEN, GENERAL_APPS, [this]() {
-    this->changeMenu(&irLedMenu, true);
+  this->addNodes(&irMenu, "IR Read (Sniffer)", TFTCYAN, GENERAL_APPS, [this]() {
+    this->runIrRead();
   });
-  this->addNodes(&irMenu, "Panasonic TV", TFTCYAN, GENERAL_APPS, [this]() {
+  this->addNodes(&irMenu, "IR Config", TFTYELLOW, DEVICE, [this]() {
+    this->buildIrConfigMenu();
+    this->changeMenu(&irConfigMenu, true);
+  });
+
+  // Build irTvBGoneMenu (Combined EU->NA + separate regions)
+  this->addNodes(&irTvBGoneMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irTvBGoneMenu.parentMenu, true);
+  });
+  this->addNodes(&irTvBGoneMenu, "All TVs (EU->NA->Univ)", TFTRED, BEACON_SPAM, [this]() {
+    this->runTVBGone(0);
+  });
+  this->addNodes(&irTvBGoneMenu, "Region EU (+ Univ)", TFTYELLOW, BEACON_SPAM, [this]() {
+    this->runTVBGone(1);
+  });
+  this->addNodes(&irTvBGoneMenu, "Region NA (+ Univ)", TFTCYAN, BEACON_SPAM, [this]() {
+    this->runTVBGone(2);
+  });
+
+  // Build irJammerMenu
+  this->addNodes(&irJammerMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irJammerMenu.parentMenu, true);
+  });
+  this->addNodes(&irJammerMenu, "Sweep Jam (36-56k)", TFTMAGENTA, BEACON_SPAM, [this]() {
+    this->runIrJammer(2);
+  });
+  this->addNodes(&irJammerMenu, "Basic Jam (38k)", TFTORANGE, BEACON_SPAM, [this]() {
+    this->runIrJammer(0);
+  });
+  this->addNodes(&irJammerMenu, "Random Jitter Jam", TFTRED, BEACON_SPAM, [this]() {
+    this->runIrJammer(1);
+  });
+
+  // Build irCustomMenu (Submenu folder for saved remotes & tests)
+  this->addNodes(&irCustomMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irCustomMenu.parentMenu, true);
+  });
+  this->addNodes(&irCustomMenu, "Panasonic TV", TFTCYAN, GENERAL_APPS, [this]() {
     this->changeMenu(&irTvMenu, true);
   });
-  this->addNodes(&irMenu, "IR 3s Loop (Test)", TFTCYAN, BEACON_SPAM, [this]() {
+  this->addNodes(&irCustomMenu, "Window Lights (1-8)", TFTYELLOW, GENERAL_APPS, [this]() {
+    this->changeMenu(&irFairyMenu, true);
+  });
+  this->addNodes(&irCustomMenu, "SP611E LED Strip", TFTGREEN, GENERAL_APPS, [this]() {
+    this->changeMenu(&irLedMenu, true);
+  });
+  this->addNodes(&irCustomMenu, "IR 3s Loop (Test)", TFTMAGENTA, BEACON_SPAM, [this]() {
     this->changeMenu(&irLoopMenu, true);
   });
-  this->addNodes(&irMenu, "IR Blink & Log Test", TFTORANGE, BEACON_SPAM, [this]() {
+  this->addNodes(&irCustomMenu, "IR Blink & Log Test", TFTORANGE, BEACON_SPAM, [this]() {
     this->runIrBlinkTest();
   });
 
@@ -7990,7 +8046,7 @@ void MenuFunctions::runIrBlinkTest() {
   this->changeMenu(current_menu, true);
 }
 
-void MenuFunctions::runTVBGone() {
+void MenuFunctions::runTVBGone(uint8_t batch_type) {
   display_obj.clearScreen();
   display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
   display_obj.tft.setTextWrap(false);
@@ -7998,7 +8054,9 @@ void MenuFunctions::runTVBGone() {
   // Header
   display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_RED);
   display_obj.tft.setTextColor(TFT_WHITE, TFT_RED);
-  display_obj.tft.drawCentreString("TV-B-GONE UNIVERSAL", SCREEN_WIDTH / 2, 4, 2);
+  const char* title = (batch_type == 0) ? "TV-B-GONE (EU->NA->ALL)" :
+                      (batch_type == 1) ? "TV-B-GONE (EUROPE)" : "TV-B-GONE (NORTH AM.)";
+  display_obj.tft.drawCentreString(title, SCREEN_WIDTH / 2, 4, 2);
 
   // Exit banner
   display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
@@ -8040,7 +8098,7 @@ void MenuFunctions::runTVBGone() {
     return true;
   };
 
-  bool completed = ir_blaster_obj.runTVBGoneBatch(0, progressCb);
+  bool completed = ir_blaster_obj.runTVBGoneBatch(batch_type, progressCb);
 
   display_obj.tft.fillRect(0, 120, SCREEN_WIDTH, 24, TFT_BLACK);
   if (completed) {
@@ -8056,7 +8114,7 @@ void MenuFunctions::runTVBGone() {
   this->changeMenu(current_menu, true);
 }
 
-void MenuFunctions::runIrJammer() {
+void MenuFunctions::runIrJammer(uint8_t mode) {
   display_obj.clearScreen();
   display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
   display_obj.tft.setTextWrap(false);
@@ -8064,7 +8122,9 @@ void MenuFunctions::runIrJammer() {
   // Header
   display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_MAGENTA);
   display_obj.tft.setTextColor(TFT_WHITE, TFT_MAGENTA);
-  display_obj.tft.drawCentreString("IR JAMMER (ATTACK)", SCREEN_WIDTH / 2, 4, 2);
+  const char* modeTitle = (mode == 0) ? "IR JAMMER (BASIC 38k)" :
+                          (mode == 1) ? "IR JAMMER (RANDOM)" : "IR JAMMER (SWEEP 36-56k)";
+  display_obj.tft.drawCentreString(modeTitle, SCREEN_WIDTH / 2, 4, 2);
 
   // Exit banner
   display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
@@ -8076,7 +8136,6 @@ void MenuFunctions::runIrJammer() {
   uint32_t jamCount = 0;
   uint32_t lastUI = millis();
   bool blink = false;
-  uint8_t mode = 2;
 
   while (true) {
     if (digitalRead(0) == LOW) {
@@ -8097,7 +8156,7 @@ void MenuFunctions::runIrJammer() {
       display_obj.tft.drawRect(10, 26, SCREEN_WIDTH - 20, 44, TFT_WHITE);
       display_obj.tft.setTextColor(TFT_WHITE, boxColor);
       display_obj.tft.drawCentreString("JAMMING ACTIVE", SCREEN_WIDTH / 2, 32, 2);
-      display_obj.tft.drawCentreString("Multi-Frequency Sweep (36-56 kHz)", SCREEN_WIDTH / 2, 52, 1);
+      display_obj.tft.drawCentreString(modeTitle, SCREEN_WIDTH / 2, 52, 1);
 
       display_obj.tft.fillRect(0, 76, SCREEN_WIDTH, 60, TFT_BLACK);
       display_obj.tft.setTextColor(TFT_YELLOW, TFT_BLACK);
@@ -8105,11 +8164,136 @@ void MenuFunctions::runIrJammer() {
 
       display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
       display_obj.tft.drawCentreString("TX Pin: GPIO " + String(ir_blaster_obj.getPin()), SCREEN_WIDTH / 2, 104, 1);
-      display_obj.tft.drawCentreString("Blocking nearby remotes...", SCREEN_WIDTH / 2, 118, 1);
+      display_obj.tft.drawCentreString("Disrupting IR remotes...", SCREEN_WIDTH / 2, 118, 1);
     }
   }
 
   digitalWrite(ir_blaster_obj.getPin(), LOW);
+  display_obj.init();
+  this->changeMenu(current_menu, true);
+}
+
+void MenuFunctions::buildIrConfigMenu() {
+  if (irConfigMenu.list != NULL) {
+    irConfigMenu.list->clear();
+  } else {
+    irConfigMenu.list = new LinkedList<MenuNode>();
+  }
+  this->addNodes(&irConfigMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irConfigMenu.parentMenu, true);
+  });
+  String txText = "TX Pin: GPIO " + String(ir_blaster_obj.getPin());
+  this->addNodes(&irConfigMenu, txText.c_str(), TFTGREEN, 0, [this]() {
+    ir_blaster_obj.cycleTxPin();
+    this->buildIrConfigMenu();
+    this->changeMenu(&irConfigMenu, true);
+  });
+  String rxText = "RX Pin: GPIO " + String(ir_blaster_obj.getRxPin());
+  this->addNodes(&irConfigMenu, rxText.c_str(), TFTCYAN, 0, [this]() {
+    ir_blaster_obj.cycleRxPin();
+    this->buildIrConfigMenu();
+    this->changeMenu(&irConfigMenu, true);
+  });
+  String rptText = "TX Repeats: " + String(ir_blaster_obj.getRepeats());
+  this->addNodes(&irConfigMenu, rptText.c_str(), TFTYELLOW, 0, [this]() {
+    ir_blaster_obj.cycleRepeats();
+    this->buildIrConfigMenu();
+    this->changeMenu(&irConfigMenu, true);
+  });
+  String freqText = "Carrier: " + String(ir_blaster_obj.getFrequency() / 1000) + " kHz";
+  this->addNodes(&irConfigMenu, freqText.c_str(), TFTMAGENTA, 0, [this]() {
+    ir_blaster_obj.cycleFrequency();
+    this->buildIrConfigMenu();
+    this->changeMenu(&irConfigMenu, true);
+  });
+  String jamText = "Jam Mode: " + ir_blaster_obj.getJammerModeName();
+  this->addNodes(&irConfigMenu, jamText.c_str(), TFTORANGE, 0, [this]() {
+    ir_blaster_obj.cycleJammerMode();
+    this->buildIrConfigMenu();
+    this->changeMenu(&irConfigMenu, true);
+  });
+}
+
+void MenuFunctions::runIrRead() {
+  display_obj.clearScreen();
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  display_obj.tft.setTextWrap(false);
+
+  // Header
+  display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
+  display_obj.tft.drawCentreString("IR READ / SNIFFER", SCREEN_WIDTH / 2, 4, 2);
+
+  // Exit banner
+  display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display_obj.tft.drawCentreString("Press BOOT (IO 0) to Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+
+  // Status info
+  display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  display_obj.tft.drawCentreString("Listening on GPIO " + String(ir_blaster_obj.getRxPin()), SCREEN_WIDTH / 2, 28, 1);
+  display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  display_obj.tft.drawCentreString("Point remote at IR receiver...", SCREEN_WIDTH / 2, 42, 1);
+
+  display_obj.tft.drawFastHLine(10, 56, SCREEN_WIDTH - 20, TFT_DARKGREY);
+
+  uint32_t packetCount = 0;
+  String lastProto = "None";
+  uint32_t lastAddr = 0;
+  uint32_t lastCmd = 0;
+  uint32_t lastRaw = 0;
+  uint16_t lastBits = 0;
+  uint32_t lastAnim = millis();
+  bool animDot = false;
+
+  while (digitalRead(0) == LOW) delay(10);
+
+  while (true) {
+    if (digitalRead(0) == LOW) {
+      while (digitalRead(0) == LOW) delay(10);
+      break;
+    }
+
+    String proto;
+    uint32_t addr = 0, cmd = 0, raw = 0;
+    uint16_t bits = 0;
+
+    if (ir_blaster_obj.readIRSignal(proto, addr, cmd, raw, bits)) {
+      packetCount++;
+      lastProto = proto;
+      lastAddr = addr;
+      lastCmd = cmd;
+      lastRaw = raw;
+      lastBits = bits;
+
+      display_obj.tft.fillRect(0, 60, SCREEN_WIDTH, 120, TFT_BLACK);
+
+      display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
+      display_obj.tft.drawCentreString("CODE CAPTURED (#" + String(packetCount) + ")", SCREEN_WIDTH / 2, 62, 2);
+
+      display_obj.tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+      display_obj.tft.drawString("Proto: " + lastProto + " (" + String(lastBits) + "b)", 15, 84, 2);
+
+      display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      char hexBuf[40];
+      snprintf(hexBuf, sizeof(hexBuf), "Addr: 0x%04X  Cmd: 0x%02X", (unsigned int)lastAddr, (unsigned int)lastCmd);
+      display_obj.tft.drawString(String(hexBuf), 15, 104, 1);
+
+      snprintf(hexBuf, sizeof(hexBuf), "HEX: 0x%08X", (unsigned int)lastRaw);
+      display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      display_obj.tft.drawString(String(hexBuf), 15, 120, 2);
+
+      delay(150);
+    }
+
+    if (millis() - lastAnim >= 500) {
+      lastAnim = millis();
+      animDot = !animDot;
+      display_obj.tft.fillRect(SCREEN_WIDTH - 20, 6, 10, 10, animDot ? TFT_RED : TFT_BLUE);
+    }
+    yield();
+  }
+
   display_obj.init();
   this->changeMenu(current_menu, true);
 }

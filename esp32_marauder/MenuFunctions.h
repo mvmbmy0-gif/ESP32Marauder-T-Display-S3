@@ -232,13 +232,19 @@ class MenuFunctions
     Menu deviceMenu;
     #ifdef HAS_IR
       Menu irMenu;
+      Menu irTvBGoneMenu;
+      Menu irJammerMenu;
+      Menu irCustomMenu;
       Menu irTvMenu;
       Menu irFairyMenu;
       Menu irLedMenu;
       Menu irLoopMenu;
+      Menu irConfigMenu;
       void runIrBlinkTest();
-      void runTVBGone();
-      void runIrJammer();
+      void runTVBGone(uint8_t batch_type = 0);
+      void runIrJammer(uint8_t mode = 2);
+      void runIrRead();
+      void buildIrConfigMenu();
     #endif
 
     // Device menu stuff

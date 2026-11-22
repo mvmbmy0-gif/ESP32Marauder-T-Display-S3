@@ -1,7 +1,11 @@
 #include "IRBlaster.h"
 #include "WORLD_IR_CODES.h"
+#include <Preferences.h>
 
 IRBlaster ir_blaster_obj;
+
+static const uint8_t candidate_pins[] = {20, 21, 1, 2, 3, 16, 17, 18, 43, 44};
+static const size_t num_candidate_pins = sizeof(candidate_pins) / sizeof(candidate_pins[0]);
 
 extern const IrCode *const NApowerCodes[];
 extern const uint8_t num_NAcodes;
@@ -14,8 +18,11 @@ extern const uint8_t num_UniversalRawCodes;
 
 IRBlaster::IRBlaster() {
   pin = IR_TX_PIN;
+  rx_pin = IR_RX_PIN;
   channel = IR_LEDC_CHANNEL;
   current_freq = 38000;
+  tx_repeats = 1;
+  jammer_mode = 2; // SWEEP default
   initialized = false;
   loop_active = false;
   loop_target = IR_LOOP_FAIRY_LIGHTS;
@@ -26,21 +33,50 @@ IRBlaster::IRBlaster() {
   last_tx_info = "Ready";
 }
 
+void IRBlaster::loadSettings() {
+  Preferences prefs;
+  if (prefs.begin("ir_cfg", true)) {
+    pin = prefs.getUChar("tx_pin", pin);
+    rx_pin = prefs.getUChar("rx_pin", rx_pin);
+    tx_repeats = prefs.getUChar("repeats", tx_repeats);
+    current_freq = prefs.getUInt("freq", current_freq);
+    jammer_mode = prefs.getUChar("jam_mode", jammer_mode);
+    prefs.end();
+  }
+}
+
+void IRBlaster::saveSettings() {
+  Preferences prefs;
+  if (prefs.begin("ir_cfg", false)) {
+    prefs.putUChar("tx_pin", pin);
+    prefs.putUChar("rx_pin", rx_pin);
+    prefs.putUChar("repeats", tx_repeats);
+    prefs.putUInt("freq", current_freq);
+    prefs.putUChar("jam_mode", jammer_mode);
+    prefs.end();
+  }
+}
+
 void IRBlaster::begin(uint8_t tx_pin, uint8_t ledc_ch) {
-  pin = tx_pin;
+  loadSettings();
+  if (tx_pin != IR_TX_PIN && tx_pin != pin) {
+    pin = tx_pin;
+  }
   channel = ledc_ch;
-  current_freq = 38000;
 
   pinMode(pin, OUTPUT);
   digitalWrite(pin, LOW);
 
-  // Setup hardware LEDC timer for 38kHz PWM
-  ledcSetup(channel, current_freq, 8);
+  // Setup hardware LEDC timer for carrier PWM
+  ledcSetup(channel, current_freq > 0 ? current_freq : 38000, 8);
   ledcAttachPin(pin, channel);
   ledcWrite(channel, 0); // Start with carrier OFF
 
+  pinMode(rx_pin, INPUT_PULLUP);
+
   initialized = true;
-  Serial.printf("[IR] Blaster initialized on GPIO %u (LEDC CH %u, Carrier: %u Hz)\n", pin, channel, current_freq);
+  Serial.printf("[IR] Blaster initialized on TX GPIO %u (LEDC CH %u, Carrier: %u Hz), RX GPIO %u\n",
+                pin, channel, current_freq, rx_pin);
 }
 
 void IRBlaster::setFrequency(uint32_t freq_hz) {
@@ -71,7 +107,87 @@ void IRBlaster::setPin(uint8_t new_pin) {
     pinMode(pin, INPUT);
   }
   pin = new_pin;
+  saveSettings();
   begin(pin, channel);
+}
+
+void IRBlaster::cycleTxPin() {
+  int idx = -1;
+  for (size_t i = 0; i < num_candidate_pins; i++) {
+    if (candidate_pins[i] == pin) {
+      idx = i;
+      break;
+    }
+  }
+  uint8_t next_pin = (idx >= 0) ? candidate_pins[(idx + 1) % num_candidate_pins] : candidate_pins[0];
+  setPin(next_pin);
+}
+
+void IRBlaster::setRxPin(uint8_t new_rx) {
+  rx_pin = new_rx;
+  pinMode(rx_pin, INPUT_PULLUP);
+  saveSettings();
+}
+
+void IRBlaster::cycleRxPin() {
+  int idx = -1;
+  for (size_t i = 0; i < num_candidate_pins; i++) {
+    if (candidate_pins[i] == rx_pin) {
+      idx = i;
+      break;
+    }
+  }
+  uint8_t next_pin = (idx >= 0) ? candidate_pins[(idx + 1) % num_candidate_pins] : candidate_pins[0];
+  setRxPin(next_pin);
+}
+
+void IRBlaster::setRepeats(uint8_t r) {
+  tx_repeats = r;
+  saveSettings();
+}
+
+void IRBlaster::cycleRepeats() {
+  const uint8_t r_opts[] = {0, 1, 2, 3, 5, 10};
+  int idx = -1;
+  for (int i = 0; i < 6; i++) {
+    if (r_opts[i] == tx_repeats) { idx = i; break; }
+  }
+  tx_repeats = (idx >= 0) ? r_opts[(idx + 1) % 6] : 1;
+  saveSettings();
+}
+
+void IRBlaster::setConfigFrequency(uint32_t f) {
+  setFrequency(f);
+  saveSettings();
+}
+
+void IRBlaster::cycleFrequency() {
+  const uint32_t f_opts[] = {38000, 36000, 40000, 56000};
+  int idx = -1;
+  for (int i = 0; i < 4; i++) {
+    if (f_opts[i] == current_freq) { idx = i; break; }
+  }
+  uint32_t next_f = (idx >= 0) ? f_opts[(idx + 1) % 4] : 38000;
+  setConfigFrequency(next_f);
+}
+
+void IRBlaster::setJammerMode(uint8_t m) {
+  jammer_mode = m % 3;
+  saveSettings();
+}
+
+void IRBlaster::cycleJammerMode() {
+  jammer_mode = (jammer_mode + 1) % 3;
+  saveSettings();
+}
+
+String IRBlaster::getJammerModeName() const {
+  switch (jammer_mode) {
+    case 0: return "BASIC (38k)";
+    case 1: return "RANDOM";
+    case 2: return "SWEEP";
+    default: return "SWEEP";
+  }
 }
 
 void IRBlaster::sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz) {
@@ -141,57 +257,122 @@ void IRBlaster::sendRawCode(const struct RawIrCode *code) {
 }
 
 bool IRBlaster::runTVBGoneBatch(uint8_t batch_type, std::function<bool(uint16_t current, uint16_t total, const char* name)> progressCb) {
+  if (!initialized) begin();
+
   uint16_t total = 0;
   if (batch_type == 0) {
-    total = num_UniversalParsedCodes + num_UniversalRawCodes;
+    // Merged: Europe first, then North America, then Universal Parsed & Raw
+    total = num_EUcodes + num_NAcodes + num_UniversalParsedCodes + num_UniversalRawCodes;
   } else if (batch_type == 1) {
-    total = num_EUcodes + num_UniversalParsedCodes;
+    // Europe + Universal
+    total = num_EUcodes + num_UniversalParsedCodes + num_UniversalRawCodes;
   } else {
-    total = num_NAcodes + num_UniversalParsedCodes;
+    // North America + Universal
+    total = num_NAcodes + num_UniversalParsedCodes + num_UniversalRawCodes;
   }
 
   uint16_t current = 0;
 
-  if (batch_type == 0) {
-    for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
-      current++;
-      if (progressCb && !progressCb(current, total, "Universal Parsed")) return false;
-      sendParsedCode(UniversalParsedCodes[i]);
-      delay(25);
-    }
-    for (uint8_t i = 0; i < num_UniversalRawCodes; i++) {
-      current++;
-      if (progressCb && !progressCb(current, total, "Universal Raw")) return false;
-      sendRawCode(UniversalRawCodes[i]);
-      delay(25);
-    }
-  } else if (batch_type == 1) {
+  // 1. EU Codes
+  if (batch_type == 0 || batch_type == 1) {
     for (uint8_t i = 0; i < num_EUcodes; i++) {
       current++;
       if (progressCb && !progressCb(current, total, "EU Region")) return false;
       sendParsedCode(EUpowerCodes[i]);
       delay(25);
     }
-    for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
-      current++;
-      if (progressCb && !progressCb(current, total, "Universal")) return false;
-      sendParsedCode(UniversalParsedCodes[i]);
-      delay(25);
-    }
-  } else {
+  }
+
+  // 2. NA Codes
+  if (batch_type == 0 || batch_type == 2) {
     for (uint8_t i = 0; i < num_NAcodes; i++) {
       current++;
       if (progressCb && !progressCb(current, total, "NA Region")) return false;
       sendParsedCode(NApowerCodes[i]);
       delay(25);
     }
-    for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
-      current++;
-      if (progressCb && !progressCb(current, total, "Universal")) return false;
-      sendParsedCode(UniversalParsedCodes[i]);
-      delay(25);
-    }
   }
+
+  // 3. Universal Parsed
+  for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
+    current++;
+    if (progressCb && !progressCb(current, total, "Universal Parsed")) return false;
+    sendParsedCode(UniversalParsedCodes[i]);
+    delay(25);
+  }
+
+  // 4. Universal Raw
+  for (uint8_t i = 0; i < num_UniversalRawCodes; i++) {
+    current++;
+    if (progressCb && !progressCb(current, total, "Universal Raw")) return false;
+    sendRawCode(UniversalRawCodes[i]);
+    delay(25);
+  }
+
+  return true;
+}
+
+bool IRBlaster::readIRSignal(String &proto, uint32_t &addr, uint32_t &cmd, uint32_t &raw, uint16_t &bits) {
+  pinMode(rx_pin, INPUT_PULLUP);
+
+  // Quick poll: if line is idle (HIGH), wait up to 30ms for a falling edge
+  uint32_t t0 = micros();
+  while (digitalRead(rx_pin) == HIGH) {
+    if (micros() - t0 > 30000) return false;
+  }
+
+  // Active carrier turns receiver output LOW
+  unsigned long startLow = pulseIn(rx_pin, LOW, 20000); // expect ~9000us for NEC
+  if (startLow < 1500) return false; // glitch / noise
+
+  unsigned long startHigh = pulseIn(rx_pin, HIGH, 10000); // expect ~4500us
+
+  // Check NEC Header (~9000us LOW, ~4500us HIGH)
+  if (startLow >= 7000 && startLow <= 11000 && startHigh >= 3000 && startHigh <= 6000) {
+    uint32_t data = 0;
+    for (int i = 0; i < 32; i++) {
+      unsigned long bitLow = pulseIn(rx_pin, LOW, 2500);
+      unsigned long bitHigh = pulseIn(rx_pin, HIGH, 3500);
+      if (bitLow == 0 || bitHigh == 0) return false;
+      if (bitHigh > 1000) {
+        data |= ((uint32_t)1 << i);
+      }
+    }
+    proto = "NEC";
+    raw = data;
+    bits = 32;
+    addr = data & 0xFFFF;
+    cmd = (data >> 16) & 0xFF;
+    return true;
+  }
+
+  // Sony SIRC Header (~2400us LOW)
+  if (startLow >= 1800 && startLow <= 3000 && startHigh >= 400 && startHigh <= 1000) {
+    uint32_t data = 0;
+    int bCount = 0;
+    for (int i = 0; i < 20; i++) {
+      unsigned long bitLow = pulseIn(rx_pin, LOW, 2000);
+      unsigned long bitHigh = pulseIn(rx_pin, HIGH, 2000);
+      if (bitLow == 0) break;
+      bCount++;
+      if (bitLow > 900) {
+        data |= ((uint32_t)1 << i);
+      }
+    }
+    proto = "SONY SIRC";
+    raw = data;
+    bits = bCount;
+    cmd = data & 0x7F;
+    addr = (data >> 7);
+    return true;
+  }
+
+  // Generic / RAW pulse
+  proto = "RAW PULSE";
+  raw = startLow;
+  addr = startHigh;
+  cmd = 0;
+  bits = 1;
   return true;
 }
 
