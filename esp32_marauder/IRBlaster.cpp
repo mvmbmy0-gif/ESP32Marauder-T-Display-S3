@@ -17,6 +17,29 @@ extern const uint8_t num_UniversalParsedCodes;
 extern const RawIrCode *const UniversalRawCodes[];
 extern const uint8_t num_UniversalRawCodes;
 
+static uint32_t parseHexBytes(const String &str) {
+  String s = str;
+  s.trim();
+  char buf[64];
+  strncpy(buf, s.c_str(), sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  char *token = strtok(buf, " ");
+  uint32_t result = 0;
+  int shift = 0;
+  int count = 0;
+  while (token != nullptr && count < 4) {
+    uint32_t b = strtoul(token, nullptr, 16) & 0xFF;
+    result |= (b << shift);
+    shift += 8;
+    count++;
+    token = strtok(nullptr, " ");
+  }
+  if (count == 0) {
+    result = strtoul(s.c_str(), nullptr, 16);
+  }
+  return result;
+}
+
 static String uint32ToHexStr(uint32_t val) {
   char buf[12];
   snprintf(buf, sizeof(buf), "%02X %02X %02X %02X",
@@ -59,23 +82,33 @@ IRBlaster::~IRBlaster() {
 
 void IRBlaster::loadSettings() {
   Preferences prefs;
-  if (prefs.begin("ir_cfg", true)) {
+  bool needsSave = false;
+  if (prefs.begin("ir_cfg", false)) {
     pin = prefs.getUChar("tx_pin", 21);
     rx_pin = prefs.getUChar("rx_pin", 16);
     // Auto-migrate old default (20) to user's hardware (21)
-    if (pin == 20) {
+    if (pin == 20 || pin == 0) {
       pin = 21;
+      needsSave = true;
     }
     // Ensure RX pin is GPIO 16
-    if (rx_pin == 21) {
+    if (rx_pin == 21 || rx_pin == 20 || rx_pin == 0) {
       rx_pin = 16;
+      needsSave = true;
     }
     tx_repeats = prefs.getUChar("repeats", 1);
     jammer_mode = prefs.getUChar("jam_mode", 2);
+    if (needsSave) {
+      prefs.putUChar("tx_pin", pin);
+      prefs.putUChar("rx_pin", rx_pin);
+    }
     prefs.end();
   } else {
     pin = 21;
     rx_pin = 16;
+    tx_repeats = 1;
+    jammer_mode = 2;
+    saveSettings();
   }
 }
 
@@ -99,6 +132,8 @@ void IRBlaster::begin(uint8_t tx_pin, uint8_t ledc_ch) {
 
   pinMode(pin, OUTPUT);
   digitalWrite(pin, LOW);
+
+  gpio_reset_pin((gpio_num_t)rx_pin);
   pinMode(rx_pin, INPUT_PULLUP);
 
   if (irsend) {
@@ -111,7 +146,7 @@ void IRBlaster::begin(uint8_t tx_pin, uint8_t ledc_ch) {
     irrecv->disableIRIn();
     delete irrecv;
   }
-  irrecv = new IRrecv(rx_pin, 1024, 50, true);
+  irrecv = new IRrecv(rx_pin, 1024, 50, false);
 
   initFilesystem();
 
@@ -150,13 +185,14 @@ void IRBlaster::cycleTxPin() {
 void IRBlaster::setRxPin(uint8_t new_rx) {
   if (new_rx == rx_pin && initialized) return;
   rx_pin = new_rx;
+  gpio_reset_pin((gpio_num_t)rx_pin);
   pinMode(rx_pin, INPUT_PULLUP);
 
   if (irrecv) {
     irrecv->disableIRIn();
     delete irrecv;
   }
-  irrecv = new IRrecv(rx_pin, 1024, 50, true);
+  irrecv = new IRrecv(rx_pin, 1024, 50, false);
 
   saveSettings();
 }
@@ -209,11 +245,12 @@ String IRBlaster::getJammerModeName() const {
 
 void IRBlaster::startIRReceiver() {
   if (!initialized) begin();
-  if (!irrecv) {
-    irrecv = new IRrecv(rx_pin, 1024, 50, true);
-  }
+  gpio_reset_pin((gpio_num_t)rx_pin);
   pinMode(rx_pin, INPUT_PULLUP);
-  irrecv->enableIRIn();
+  if (!irrecv) {
+    irrecv = new IRrecv(rx_pin, 1024, 50, false);
+  }
+  irrecv->enableIRIn(true);
 }
 
 void IRBlaster::stopIRReceiver() {
@@ -273,7 +310,7 @@ void IRBlaster::sendDecodedResult(const decode_results *result) {
   }
 
   digitalWrite(pin, LOW);
-  if (wasListening) irrecv->enableIRIn();
+  if (wasListening) irrecv->enableIRIn(true);
 }
 
 void IRBlaster::sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz) {
@@ -286,7 +323,7 @@ void IRBlaster::sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz) {
   irsend->sendRaw(buf, len, freq_hz > 0 ? (uint16_t)(freq_hz / 1000 * 1000) : 38000);
   digitalWrite(pin, LOW);
 
-  if (wasListening) irrecv->enableIRIn();
+  if (wasListening) irrecv->enableIRIn(true);
 }
 
 void IRBlaster::sendParsedCode(const struct IrCode *code) {
@@ -642,9 +679,9 @@ bool IRBlaster::loadRemote(const String &nameOrPath, CustomRemote &remote) {
     } else if (key.equalsIgnoreCase("protocol")) {
       curBtn.protocol = val;
     } else if (key.equalsIgnoreCase("address")) {
-      curBtn.address = strtoul(val.c_str(), nullptr, 16);
+      curBtn.address = parseHexBytes(val);
     } else if (key.equalsIgnoreCase("command")) {
-      curBtn.command = strtoul(val.c_str(), nullptr, 16);
+      curBtn.command = parseHexBytes(val);
     } else if (key.equalsIgnoreCase("value")) {
       val.replace(" ", "");
       curBtn.value = strtoull(val.c_str(), nullptr, 16);
@@ -729,7 +766,10 @@ bool IRBlaster::deleteRemote(const String &nameOrPath) {
 bool IRBlaster::appendButtonToRemote(const String &remoteName, const CustomIRButton &btn) {
   CustomRemote rem;
   loadRemote(remoteName, rem);
-  rem.name = remoteName;
+  String cleanName = remoteName;
+  if (cleanName.startsWith("/")) cleanName = cleanName.substring(cleanName.lastIndexOf('/') + 1);
+  if (cleanName.endsWith(".ir")) cleanName = cleanName.substring(0, cleanName.length() - 3);
+  if (rem.name.length() == 0) rem.name = cleanName;
   rem.buttons.push_back(btn);
   return saveRemote(rem);
 }
@@ -743,38 +783,52 @@ void IRBlaster::sendCustomButton(const CustomIRButton &btn) {
     if (btn.type.equalsIgnoreCase("raw") && !btn.rawData.empty()) {
       irsend->sendRaw(btn.rawData.data(), btn.rawData.size(), btn.frequency > 0 ? btn.frequency : 38000);
     } else {
-      decode_type_t dt = strToDecodeType(btn.protocol.c_str());
-      if (dt != decode_type_t::UNKNOWN) {
-        if (dt == decode_type_t::NEC) {
-          uint64_t data = irsend->encodeNEC(btn.address, btn.command);
-          if (data == 0 && btn.value != 0) data = btn.value;
-          irsend->sendNEC(data, btn.bits > 0 ? btn.bits : 32);
-        } else if (dt == decode_type_t::SAMSUNG) {
-          uint64_t data = irsend->encodeSAMSUNG(btn.address, btn.command);
-          if (data == 0 && btn.value != 0) data = btn.value;
-          irsend->sendSAMSUNG(data, btn.bits > 0 ? btn.bits : 32);
-        } else if (dt == decode_type_t::SONY) {
-          irsend->sendSony(btn.value != 0 ? btn.value : btn.command, btn.bits > 0 ? btn.bits : 12);
-        } else if (dt == decode_type_t::RC5) {
-          uint16_t data = (btn.value != 0) ? (uint16_t)btn.value : irsend->encodeRC5(btn.address, btn.command);
-          irsend->sendRC5(data, btn.bits > 0 ? btn.bits : 13);
-        } else if (dt == decode_type_t::RC6) {
-          uint64_t data = (btn.value != 0) ? btn.value : irsend->encodeRC6(btn.address, btn.command);
-          irsend->sendRC6(data, btn.bits > 0 ? btn.bits : 20);
-        } else if (dt == decode_type_t::PANASONIC) {
-          irsend->sendPanasonic64(btn.value, btn.bits > 0 ? btn.bits : 48);
-        } else {
-          irsend->send(dt, btn.value != 0 ? btn.value : btn.command, btn.bits > 0 ? btn.bits : 32);
+      String proto = btn.protocol;
+      proto.toUpperCase();
+
+      if (proto.startsWith("NEC")) {
+        uint64_t data = 0;
+        if (btn.value != 0) {
+          data = btn.value;
+        } else if (btn.address != 0 || btn.command != 0) {
+          data = irsend->encodeNEC(btn.address, btn.command);
         }
-      } else if (btn.value != 0) {
-        irsend->sendNEC(btn.value, btn.bits > 0 ? btn.bits : 32);
+        irsend->sendNEC(data, btn.bits > 0 ? btn.bits : 32);
+      } else if (proto.startsWith("SAMSUNG")) {
+        uint64_t data = 0;
+        if (btn.value != 0) {
+          data = btn.value;
+        } else if (btn.address != 0 || btn.command != 0) {
+          data = irsend->encodeSAMSUNG(btn.address, btn.command);
+        }
+        irsend->sendSAMSUNG(data, btn.bits > 0 ? btn.bits : 32);
+      } else if (proto.startsWith("SONY") || proto.startsWith("SIRC")) {
+        uint16_t nbits = btn.bits > 0 ? btn.bits : 12;
+        if (proto.equals("SIRC15")) nbits = 15;
+        else if (proto.equals("SIRC20")) nbits = 20;
+        irsend->sendSony(btn.value != 0 ? btn.value : btn.command, nbits, 2);
+      } else if (proto.startsWith("RC5")) {
+        uint16_t data = (btn.value != 0) ? (uint16_t)btn.value : irsend->encodeRC5(btn.address, btn.command);
+        irsend->sendRC5(data, btn.bits > 0 ? btn.bits : 13);
+      } else if (proto.startsWith("RC6")) {
+        uint64_t data = (btn.value != 0) ? btn.value : irsend->encodeRC6(btn.address, btn.command);
+        irsend->sendRC6(data, btn.bits > 0 ? btn.bits : 20);
+      } else if (proto.startsWith("PANASONIC")) {
+        irsend->sendPanasonic64(btn.value, btn.bits > 0 ? btn.bits : 48);
+      } else {
+        decode_type_t dt = strToDecodeType(btn.protocol.c_str());
+        if (dt != decode_type_t::UNKNOWN) {
+          irsend->send(dt, btn.value != 0 ? btn.value : btn.command, btn.bits > 0 ? btn.bits : 32);
+        } else if (btn.value != 0) {
+          irsend->sendNEC(btn.value, btn.bits > 0 ? btn.bits : 32);
+        }
       }
     }
     if (r < tx_repeats) delay(40);
   }
 
   digitalWrite(pin, LOW);
-  if (wasListening) irrecv->enableIRIn();
+  if (wasListening) irrecv->enableIRIn(true);
 }
 
 // -------------------------------------------------------------
