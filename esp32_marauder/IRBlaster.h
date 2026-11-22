@@ -15,7 +15,7 @@ struct RawIrCode;
 #endif
 
 #ifndef IR_RX_PIN
-  #define IR_RX_PIN 21
+  #define IR_RX_PIN 16
 #endif
 
 #ifndef IR_LEDC_CHANNEL

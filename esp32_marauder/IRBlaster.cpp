@@ -4,7 +4,7 @@
 
 IRBlaster ir_blaster_obj;
 
-static const uint8_t candidate_pins[] = {20, 21, 1, 2, 3, 16, 17, 18, 43, 44};
+static const uint8_t candidate_pins[] = {20, 16, 21, 1, 2, 3, 17, 18, 43, 44};
 static const size_t num_candidate_pins = sizeof(candidate_pins) / sizeof(candidate_pins[0]);
 
 extern const IrCode *const NApowerCodes[];
@@ -38,6 +38,10 @@ void IRBlaster::loadSettings() {
   if (prefs.begin("ir_cfg", true)) {
     pin = prefs.getUChar("tx_pin", pin);
     rx_pin = prefs.getUChar("rx_pin", rx_pin);
+    // Ensure RX pin points to user's hardware connection (GPIO 16)
+    if (rx_pin == 21) {
+      rx_pin = 16;
+    }
     tx_repeats = prefs.getUChar("repeats", tx_repeats);
     current_freq = prefs.getUInt("freq", current_freq);
     jammer_mode = prefs.getUChar("jam_mode", jammer_mode);
@@ -329,20 +333,22 @@ bool IRBlaster::readIRSignal(String &proto, uint32_t &addr, uint32_t &cmd, uint3
 
   // Check NEC Header (~9000us LOW, ~4500us HIGH)
   if (startLow >= 7000 && startLow <= 11000 && startHigh >= 3000 && startHigh <= 6000) {
-    uint32_t data = 0;
-    for (int i = 0; i < 32; i++) {
-      unsigned long bitLow = pulseIn(rx_pin, LOW, 2500);
-      unsigned long bitHigh = pulseIn(rx_pin, HIGH, 3500);
-      if (bitLow == 0 || bitHigh == 0) return false;
-      if (bitHigh > 1000) {
-        data |= ((uint32_t)1 << i);
+    uint8_t bytes[4] = {0, 0, 0, 0};
+    for (int b = 0; b < 4; b++) {
+      for (int bit = 0; bit < 8; bit++) {
+        unsigned long bitLow = pulseIn(rx_pin, LOW, 2500);
+        unsigned long bitHigh = pulseIn(rx_pin, HIGH, 3500);
+        if (bitLow == 0 || bitHigh == 0) return false;
+        if (bitHigh > 1000) {
+          bytes[b] |= (1 << bit);
+        }
       }
     }
     proto = "NEC";
-    raw = data;
+    raw = ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) | ((uint32_t)bytes[2] << 8) | bytes[3];
     bits = 32;
-    addr = data & 0xFFFF;
-    cmd = (data >> 16) & 0xFF;
+    addr = ((uint32_t)bytes[0] << 8) | bytes[1];
+    cmd = bytes[2];
     return true;
   }
 
@@ -555,58 +561,59 @@ void IRBlaster::sendFairyLights(FairyLightCmd cmd) {
 }
 
 void IRBlaster::sendLEDStrip(LedStripCmd cmd) {
-  uint32_t code_sp = 0;
+  uint32_t code_primary = 0;
   uint32_t code_alt = 0;
   String name = "";
 
   switch (cmd) {
     case LED_CMD_POWER_ON:
-      code_sp = 0x00FF02FD; code_alt = 0x00F7C03F; name = "Power ON"; break;
+      code_primary = 0x00FFA25D; code_alt = 0x00FF02FD; name = "Power ON"; break;
     case LED_CMD_POWER_OFF:
-      code_sp = 0x00FF827D; code_alt = 0x00F740BF; name = "Power OFF"; break;
+      code_primary = 0x00FFE21D; code_alt = 0x00FF827D; name = "Power OFF"; break;
     case LED_CMD_BRIGHT_UP:
-      code_sp = 0x00FF00FF; code_alt = 0x00F700FF; name = "Bright +"; break;
+      code_primary = 0x00FF5AA5; code_alt = 0x00FF00FF; name = "Bright +"; break;
     case LED_CMD_BRIGHT_DOWN:
-      code_sp = 0x00FF807F; code_alt = 0x00F7807F; name = "Bright -"; break;
+      code_primary = 0x00FF10EF; code_alt = 0x00FF807F; name = "Bright -"; break;
     case LED_CMD_SPEED_UP:
-      code_sp = 0x00FF22DD; code_alt = 0x00F7E817; name = "Speed +"; break;
+      code_primary = 0x00FF22DD; code_alt = 0x00F7E817; name = "Speed +"; break;
     case LED_CMD_SPEED_DOWN:
-      code_sp = 0x00FFA25D; code_alt = 0x00F7C837; name = "Speed -"; break;
+      code_primary = 0x00FF32CD; code_alt = 0x00F7C837; name = "Speed -"; break;
     case LED_CMD_MODE_NEXT:
-      code_sp = 0x00FF12ED; code_alt = 0x00F7D02F; name = "Mode +"; break;
+      code_primary = 0x00FF12ED; code_alt = 0x00F7D02F; name = "Mode +"; break;
     case LED_CMD_MUSIC:
-      code_sp = 0x00FF52AD; code_alt = 0x00F7F00F; name = "Music Mode"; break;
+      code_primary = 0x00FF08F7; code_alt = 0x00FF52AD; name = "Music Mode"; break;
     case LED_CMD_AUTO:
-      code_sp = 0x00FF32CD; code_alt = 0x00F7D02F; name = "Auto Effect"; break;
+      code_primary = 0x00FF30CF; code_alt = 0x00FF32CD; name = "Auto Effect"; break;
     case LED_CMD_RED:
-      code_sp = 0x00FF1AE5; code_alt = 0x00F720DF; name = "Red"; break;
+      code_primary = 0x00FF1AE5; code_alt = 0x00F720DF; name = "Red"; break;
     case LED_CMD_GREEN:
-      code_sp = 0x00FF9A65; code_alt = 0x00F7A05F; name = "Green"; break;
+      code_primary = 0x00FF9A65; code_alt = 0x00F7A05F; name = "Green"; break;
     case LED_CMD_BLUE:
-      code_sp = 0x00FF5AA5; code_alt = 0x00F7609F; name = "Blue"; break;
+      code_primary = 0x00FFA25D; code_alt = 0x00F7609F; name = "Blue"; break;
     case LED_CMD_WHITE:
-      code_sp = 0x00FFDA25; code_alt = 0x00F7E01F; name = "White"; break;
+      code_primary = 0x00FF22DD; code_alt = 0x00F7E01F; name = "White"; break;
     case LED_CMD_FLASH:
-      code_sp = 0x00FFD02F; code_alt = 0x00F7D02F; name = "Flash"; break;
+      code_primary = 0x00FF5EA1; code_alt = 0x00FFD02F; name = "Flash"; break;
     case LED_CMD_STROBE:
-      code_sp = 0x00FFF00F; code_alt = 0x00F7F00F; name = "Strobe"; break;
+      code_primary = 0x00FF0CF3; code_alt = 0x00FFF00F; name = "Strobe"; break;
     case LED_CMD_FADE:
-      code_sp = 0x00FFC837; code_alt = 0x00F7C837; name = "Fade"; break;
+      code_primary = 0x00FF16E9; code_alt = 0x00FFC837; name = "Fade"; break;
     case LED_CMD_SMOOTH:
-      code_sp = 0x00FFE817; code_alt = 0x00F7E817; name = "Smooth"; break;
+      code_primary = 0x00FF0DF2; code_alt = 0x00FFE817; name = "Smooth"; break;
   }
 
-  // Transmit dual-burst for 100% SP611E / LED compatibility
-  if (code_sp != 0) {
-    sendNEC32(code_sp);
+  // Transmit primary code from user's learned remote
+  if (code_primary != 0) {
+    sendNEC32(code_primary);
   }
-  if (code_alt != 0 && code_alt != code_sp) {
+  // If alternative exists and differs, send it as fallback after 35ms
+  if (code_alt != 0 && code_alt != code_primary) {
     delay(35);
     sendNEC32(code_alt);
   }
 
   last_tx_info = "SP611E: " + name;
-  Serial.printf("[IR TX] SP611E LED Strip: %s (0x%08X / 0x%08X)\n", name.c_str(), code_sp, code_alt);
+  Serial.printf("[IR TX] SP611E LED: %s (Primary: 0x%08X, Alt: 0x%08X)\n", name.c_str(), code_primary, code_alt);
 }
 
 void IRBlaster::startLoop(IRLoopTarget target, uint32_t interval_ms) {

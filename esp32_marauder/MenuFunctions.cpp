@@ -3191,8 +3191,17 @@ void MenuFunctions::RunSetup()
   this->addNodes(&irLedMenu, "Speed -", TFTORANGE, 0, []() {
     ir_blaster_obj.sendLEDStrip(LED_CMD_SPEED_DOWN);
   });
-  this->addNodes(&irLedMenu, "Fade Effect", TFTMAGENTA, 0, []() {
+  this->addNodes(&irLedMenu, "Flash Mode", TFTCYAN, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_FLASH);
+  });
+  this->addNodes(&irLedMenu, "Strobe Mode", TFTYELLOW, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_STROBE);
+  });
+  this->addNodes(&irLedMenu, "Fade Mode", TFTMAGENTA, 0, []() {
     ir_blaster_obj.sendLEDStrip(LED_CMD_FADE);
+  });
+  this->addNodes(&irLedMenu, "Smooth Mode", TFTGREEN, 0, []() {
+    ir_blaster_obj.sendLEDStrip(LED_CMD_SMOOTH);
   });
 
   // Build irLoopMenu (3-Second Loop / Test Mode)
@@ -8224,14 +8233,14 @@ void MenuFunctions::runIrRead() {
   display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
   display_obj.tft.drawCentreString("IR READ / SNIFFER", SCREEN_WIDTH / 2, 4, 2);
 
-  // Exit banner
+  // Exit / Action banner
   display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
   display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  display_obj.tft.drawCentreString("Press BOOT (IO 0) to Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  display_obj.tft.drawCentreString("BOOT: Exit | IO 14: Replay", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
   // Status info
   display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
-  display_obj.tft.drawCentreString("Listening on GPIO " + String(ir_blaster_obj.getRxPin()), SCREEN_WIDTH / 2, 28, 1);
+  display_obj.tft.drawCentreString("Listening on RX GPIO " + String(ir_blaster_obj.getRxPin()), SCREEN_WIDTH / 2, 28, 1);
   display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   display_obj.tft.drawCentreString("Point remote at IR receiver...", SCREEN_WIDTH / 2, 42, 1);
 
@@ -8246,12 +8255,24 @@ void MenuFunctions::runIrRead() {
   uint32_t lastAnim = millis();
   bool animDot = false;
 
-  while (digitalRead(0) == LOW) delay(10);
+  pinMode(14, INPUT_PULLUP);
+  while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
 
   while (true) {
     if (digitalRead(0) == LOW) {
       while (digitalRead(0) == LOW) delay(10);
       break;
+    }
+
+    // Button 14: Replay / Clone last captured signal via IR TX
+    if (digitalRead(14) == LOW && lastRaw != 0) {
+      while (digitalRead(14) == LOW) delay(10);
+      ir_blaster_obj.sendNEC32(lastRaw);
+      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
+      display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+      display_obj.tft.drawCentreString("REPLAYED ON GPIO " + String(ir_blaster_obj.getPin()), SCREEN_WIDTH / 2, 142, 1);
+      delay(400);
+      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
     }
 
     String proto;
@@ -8282,6 +8303,9 @@ void MenuFunctions::runIrRead() {
       snprintf(hexBuf, sizeof(hexBuf), "HEX: 0x%08X", (unsigned int)lastRaw);
       display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
       display_obj.tft.drawString(String(hexBuf), 15, 120, 2);
+
+      display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      display_obj.tft.drawString("[Press IO 14 to Replay]", 15, 142, 1);
 
       delay(150);
     }

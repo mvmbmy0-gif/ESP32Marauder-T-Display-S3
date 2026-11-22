@@ -363,7 +363,7 @@
     #define HAS_PSRAM
     #define HAS_IR
     #define IR_TX_PIN 20
-    #define IR_RX_PIN 21
+    #define IR_RX_PIN 16
   #endif
 
   #ifdef MARAUDER_V4

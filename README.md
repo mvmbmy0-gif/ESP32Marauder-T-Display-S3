@@ -88,6 +88,7 @@ This is a dedicated, fully optimized port of **ESP32Marauder** specifically craf
 | **`BUTTON_1`** | `GPIO 0` | BOOT button (Select / Back) |
 | **`BUTTON_2`** | `GPIO 14` | Navigation button (Scroll down) |
 | **`IR_TX`** | **`GPIO 20`** | **Infrared LED Transmitter output (Hardware 38kHz PWM)** |
+| **`IR_RX`** | **`GPIO 16`** | **Infrared Receiver input (Pulse decoder / Sniffer / Replayer)** |
 
 ---
 
@@ -131,19 +132,29 @@ ir loop stop
 
 ---
 
-### 📡 Можливості ІЧ-передавача (GPIO 20):
-- **Універсальний TV-B-Gone:** Послідовне надсилання сигналів вимкнення для більшості світових брендів ТВ (Samsung, LG, Sony, Panasonic, Philips тощо).
-- **ІЧ-глушилка (IR Jammer):** Потужне блокування чужих ІЧ-пультів імпульсним шумом.
-- **Телевізор Panasonic:** Повноцінний пульт (Power, Mute, гучність +/-, канали +/-, AV/Input, OK, Menu) за протоколом Kaseikyo 48-bit (36.7 кГц).
-- **Гірлянда на вікно (віконні штори-гірлянди):**
-  - Усі 8 кнопок режимів (**1..8**): Combination, In Waves, Sequential, Slo-Glo, Chasing, Slow Fade, Twinkle, Steady On.
-  - Керування яскравістю: **DIM +** та **DIM -**.
-  - Кнопки **Вкл**, **Викл** та **Таймер (6 год)**.
-  - Відправляє подвійний пакет (основний та альтернативний), що забезпечує 100% сумісність з усіма партіями китайських гірлянд.
-- **LED-стрічка WS611I:** Вибір кольорів (Червоний, Зелений, Синій, Білий тощо), ефекти (Flash, Fade, Strobe, Smooth), яскравість та живлення.
-- **Тестовий цикл кожні 3 секунди (3s Loop):**
-  - Автоматично надсилає ІЧ-сигнали кожні 3 секунди без необхідності тиснути кнопки.
-  - Зручно для перевірки дистанції, кута розсіювання та потужності транзистора.
+### 📡 Можливості ІЧ-системи (TX: GPIO 20, RX: GPIO 16):
+- **Універсальний TV-B-Gone:**
+  - Об'єднаний режим `All TVs (EU -> NA -> Univ)`: спочатку транслюються всі коди Європи (`EUpowerCodes`), потім коди Північної Америки (`NApowerCodes`), а потім універсальні коди.
+  - Окремі режими `Region EU (+ Univ)` та `Region NA (+ Univ)`.
+  - Можливість зупинки в будь-який момент кнопкою **`BOOT` (IO 0)**.
+- **ІЧ-глушилка (IR Jammer):**
+  - Режими: `Sweep Jam (36-56k)`, `Basic Jam (38k)` та `Random Jitter Jam`.
+  - Екран атаки з лічильником надісланих пакетів.
+- **Зчитувач та клонер сигналів (IR Read / Sniffer на GPIO 16):**
+  - Приймає сигнали з будь-якого пульта в реальному часі.
+  - Декодує протоколи `NEC`, `Sony SIRC`, `Raw Pulses` з відображенням Hex Address, Command та 32-bit Raw.
+  - **Клонування / Replay:** Натискання кнопки `IO 14` одразу ретранслює щойно зчитаний код через передавач на GPIO 20!
+- **Папка `Custom Remotes`:**
+  - **`SP611E LED Remote`:** Повний пульт для адресної LED стрічки з точними кодами з оригінального пульта (Power ON `0xFFA25D`, OFF `0xFFE21D`, Brightness +/- `0xFF5AA5`/`0xFF10EF`, Flash `0xFF5EA1`, Strobe `0xFF0CF3`, Fade `0xFF16E9`, Smooth `0xFF0DF2`, Speed, кольори Red/Green/Blue/White, режими Music та Auto).
+  - **`Panasonic TV`:** Повноцінний пульт (Power, Mute, гучність +/-, канали +/-, AV/Input, OK, Menu) за протоколом Kaseikyo 48-bit.
+  - **`Window Lights` (Гірлянда на вікно):** Усі 8 режимів, яскравість DIM +/-, таймер.
+  - **Тестовий цикл кожні 3 секунди (3s Loop)** та **IR Blink Test**.
+- **Меню `IR Config` (з автозбереженням в NVS пам'ять):**
+  - Перемикання `TX Pin` (за замовчуванням **GPIO 20**).
+  - Перемикання `RX Pin` (за замовчуванням **GPIO 16**).
+  - Налаштування кількості повторів `TX Repeats` (0, 1, 2, 3, 5, 10).
+  - Вибір несучої частоти `Carrier` (38k, 36k, 40k, 56k).
+  - Вибір режиму глушилки `Jam Mode`.
 
 ---
 
