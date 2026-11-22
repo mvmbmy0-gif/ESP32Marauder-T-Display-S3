@@ -5,13 +5,19 @@
 
 #include <Arduino.h>
 #include <functional>
+#include <vector>
+#include <FS.h>
+#include <LittleFS.h>
+#include <IRrecv.h>
+#include <IRsend.h>
+#include <IRutils.h>
 #include "configs.h"
 
 struct IrCode;
 struct RawIrCode;
 
 #ifndef IR_TX_PIN
-  #define IR_TX_PIN 20
+  #define IR_TX_PIN 21
 #endif
 
 #ifndef IR_RX_PIN
@@ -86,15 +92,40 @@ enum IRLoopTarget {
   IR_LOOP_UNIVERSAL_ALL
 };
 
+// Custom IR Remote Structures (Bruce / Flipper compatible)
+struct CustomIRButton {
+  String name;
+  String type;      // "parsed" or "raw"
+  String protocol;  // "NEC", "Samsung32", "SIRC", "RC5", "RC6", etc.
+  uint32_t address;
+  uint32_t command;
+  uint64_t value;
+  uint16_t bits;
+  uint16_t frequency;
+  std::vector<uint16_t> rawData;
+
+  CustomIRButton() : name(""), type("parsed"), protocol("NEC"),
+                     address(0), command(0), value(0), bits(32),
+                     frequency(38000) {}
+};
+
+struct CustomRemote {
+  String filename;
+  String name;
+  std::vector<CustomIRButton> buttons;
+};
+
 class IRBlaster {
   private:
     uint8_t pin;
     uint8_t rx_pin;
     uint8_t channel;
-    uint32_t current_freq;
     uint8_t tx_repeats;
     uint8_t jammer_mode;
     bool initialized;
+
+    IRsend *irsend;
+    IRrecv *irrecv;
 
     // Loop state
     bool loop_active;
@@ -105,15 +136,12 @@ class IRBlaster {
     uint8_t loop_sub_step;
     String last_tx_info;
 
-    void setFrequency(uint32_t freq_hz);
-    void mark(uint32_t duration_us);
-    void space(uint32_t duration_us);
-
   public:
     IRBlaster();
+    ~IRBlaster();
     void begin(uint8_t tx_pin = IR_TX_PIN, uint8_t ledc_ch = IR_LEDC_CHANNEL);
 
-    // Raw protocol transmitters
+    // Hardware IR Transmission & Protocols
     void sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz = 38000);
     void sendParsedCode(const struct IrCode *code);
     void sendRawCode(const struct RawIrCode *code);
@@ -121,12 +149,13 @@ class IRBlaster {
     void sendNEC(uint16_t address, uint8_t command, uint8_t repeats = 0);
     void sendPanasonic48(uint64_t data);
     void sendPanasonic(uint16_t address, uint8_t device, uint8_t subdevice, uint8_t command);
+    void sendDecodedResult(const decode_results *result);
 
-    // Bruce-ported Tools: TV-B-Gone & IR Jammer
+    // Bruce Tools: TV-B-Gone & IR Jammer
     bool runTVBGoneBatch(uint8_t batch_type = 0, std::function<bool(uint16_t current, uint16_t total, const char* name)> progressCb = nullptr);
     void sendJamBurst(uint8_t mode = 0, uint32_t freq_hz = 38000);
 
-    // Dynamic Pin & Settings Configuration (Bruce IR Config port + NVS storage)
+    // Dynamic Pin & Settings Configuration (Bruce IR Config + NVS)
     void setPin(uint8_t new_pin);
     uint8_t getPin() const { return pin; }
     void cycleTxPin();
@@ -139,10 +168,6 @@ class IRBlaster {
     void setRepeats(uint8_t r);
     void cycleRepeats();
 
-    uint32_t getFrequency() const { return current_freq; }
-    void setConfigFrequency(uint32_t f);
-    void cycleFrequency();
-
     uint8_t getJammerMode() const { return jammer_mode; }
     void setJammerMode(uint8_t m);
     void cycleJammerMode();
@@ -151,7 +176,11 @@ class IRBlaster {
     void loadSettings();
     void saveSettings();
 
-    // IR Signal Receiver / Sniffer (Bruce IR Read port)
+    // IR Receiver / Sniffer (Hardware interrupt based via IRrecv)
+    void startIRReceiver();
+    void stopIRReceiver();
+    bool decodeIR(decode_results *results);
+    void resumeIR();
     bool readIRSignal(String &proto, uint32_t &addr, uint32_t &cmd, uint32_t &raw, uint16_t &bits);
 
     // Device helpers
@@ -159,7 +188,16 @@ class IRBlaster {
     void sendFairyLights(FairyLightCmd cmd);
     void sendLEDStrip(LedStripCmd cmd);
 
-    // Test Loop (Every 3 seconds)
+    // Custom Remotes Management (Bruce / Flipper IR files)
+    bool initFilesystem();
+    std::vector<String> listCustomRemotes();
+    bool loadRemote(const String &nameOrPath, CustomRemote &remote);
+    bool saveRemote(const CustomRemote &remote);
+    bool deleteRemote(const String &nameOrPath);
+    bool appendButtonToRemote(const String &remoteName, const CustomIRButton &btn);
+    void sendCustomButton(const CustomIRButton &btn);
+
+    // Test Loop
     void startLoop(IRLoopTarget target = IR_LOOP_FAIRY_LIGHTS, uint32_t interval_ms = 3000);
     void stopLoop();
     bool isLoopRunning() const { return loop_active; }
@@ -167,7 +205,7 @@ class IRBlaster {
     String getLastTxInfo() const { return last_tx_info; }
     uint32_t getNextTxRemainingMs(uint32_t now) const;
 
-    // Main tick called from loop()
+    // Main tick
     void main(uint32_t currentTime);
 };
 

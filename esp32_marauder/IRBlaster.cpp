@@ -1,10 +1,11 @@
 #include "IRBlaster.h"
 #include "WORLD_IR_CODES.h"
 #include <Preferences.h>
+#include <SD.h>
 
 IRBlaster ir_blaster_obj;
 
-static const uint8_t candidate_pins[] = {20, 16, 21, 1, 2, 3, 17, 18, 43, 44};
+static const uint8_t candidate_pins[] = {21, 16, 20, 1, 2, 3, 17, 18, 43, 44};
 static const size_t num_candidate_pins = sizeof(candidate_pins) / sizeof(candidate_pins[0]);
 
 extern const IrCode *const NApowerCodes[];
@@ -16,14 +17,25 @@ extern const uint8_t num_UniversalParsedCodes;
 extern const RawIrCode *const UniversalRawCodes[];
 extern const uint8_t num_UniversalRawCodes;
 
+static String uint32ToHexStr(uint32_t val) {
+  char buf[12];
+  snprintf(buf, sizeof(buf), "%02X %02X %02X %02X",
+           (unsigned int)(val & 0xFF),
+           (unsigned int)((val >> 8) & 0xFF),
+           (unsigned int)((val >> 16) & 0xFF),
+           (unsigned int)((val >> 24) & 0xFF));
+  return String(buf);
+}
+
 IRBlaster::IRBlaster() {
   pin = IR_TX_PIN;
   rx_pin = IR_RX_PIN;
   channel = IR_LEDC_CHANNEL;
-  current_freq = 38000;
   tx_repeats = 1;
   jammer_mode = 2; // SWEEP default
   initialized = false;
+  irsend = nullptr;
+  irrecv = nullptr;
   loop_active = false;
   loop_target = IR_LOOP_FAIRY_LIGHTS;
   loop_interval_ms = 3000;
@@ -33,19 +45,37 @@ IRBlaster::IRBlaster() {
   last_tx_info = "Ready";
 }
 
+IRBlaster::~IRBlaster() {
+  if (irrecv) {
+    irrecv->disableIRIn();
+    delete irrecv;
+    irrecv = nullptr;
+  }
+  if (irsend) {
+    delete irsend;
+    irsend = nullptr;
+  }
+}
+
 void IRBlaster::loadSettings() {
   Preferences prefs;
   if (prefs.begin("ir_cfg", true)) {
-    pin = prefs.getUChar("tx_pin", pin);
-    rx_pin = prefs.getUChar("rx_pin", rx_pin);
-    // Ensure RX pin points to user's hardware connection (GPIO 16)
+    pin = prefs.getUChar("tx_pin", 21);
+    rx_pin = prefs.getUChar("rx_pin", 16);
+    // Auto-migrate old default (20) to user's hardware (21)
+    if (pin == 20) {
+      pin = 21;
+    }
+    // Ensure RX pin is GPIO 16
     if (rx_pin == 21) {
       rx_pin = 16;
     }
-    tx_repeats = prefs.getUChar("repeats", tx_repeats);
-    current_freq = prefs.getUInt("freq", current_freq);
-    jammer_mode = prefs.getUChar("jam_mode", jammer_mode);
+    tx_repeats = prefs.getUChar("repeats", 1);
+    jammer_mode = prefs.getUChar("jam_mode", 2);
     prefs.end();
+  } else {
+    pin = 21;
+    rx_pin = 16;
   }
 }
 
@@ -55,7 +85,6 @@ void IRBlaster::saveSettings() {
     prefs.putUChar("tx_pin", pin);
     prefs.putUChar("rx_pin", rx_pin);
     prefs.putUChar("repeats", tx_repeats);
-    prefs.putUInt("freq", current_freq);
     prefs.putUChar("jam_mode", jammer_mode);
     prefs.end();
   }
@@ -70,49 +99,40 @@ void IRBlaster::begin(uint8_t tx_pin, uint8_t ledc_ch) {
 
   pinMode(pin, OUTPUT);
   digitalWrite(pin, LOW);
-
-  // Setup hardware LEDC timer for carrier PWM
-  ledcSetup(channel, current_freq > 0 ? current_freq : 38000, 8);
-  ledcAttachPin(pin, channel);
-  ledcWrite(channel, 0); // Start with carrier OFF
-
   pinMode(rx_pin, INPUT_PULLUP);
 
+  if (irsend) {
+    delete irsend;
+  }
+  irsend = new IRsend(pin);
+  irsend->begin();
+
+  if (irrecv) {
+    irrecv->disableIRIn();
+    delete irrecv;
+  }
+  irrecv = new IRrecv(rx_pin, 1024, 50, true);
+
+  initFilesystem();
+
   initialized = true;
-  Serial.printf("[IR] Blaster initialized on TX GPIO %u (LEDC CH %u, Carrier: %u Hz), RX GPIO %u\n",
-                pin, channel, current_freq, rx_pin);
-}
-
-void IRBlaster::setFrequency(uint32_t freq_hz) {
-  if (current_freq != freq_hz) {
-    current_freq = freq_hz;
-    ledcSetup(channel, current_freq, 8);
-  }
-}
-
-void IRBlaster::mark(uint32_t duration_us) {
-  // 50% duty cycle on 8-bit timer = 128
-  ledcWrite(channel, 128);
-  delayMicroseconds(duration_us);
-}
-
-void IRBlaster::space(uint32_t duration_us) {
-  // Carrier OFF
-  ledcWrite(channel, 0);
-  if (duration_us > 0) {
-    delayMicroseconds(duration_us);
-  }
+  Serial.printf("[IR] Blaster initialized: TX GPIO %u, RX GPIO %u, Repeats %u\n",
+                pin, rx_pin, tx_repeats);
 }
 
 void IRBlaster::setPin(uint8_t new_pin) {
   if (new_pin == pin && initialized) return;
-  if (initialized) {
-    ledcDetachPin(pin);
-    pinMode(pin, INPUT);
-  }
   pin = new_pin;
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+
+  if (irsend) {
+    delete irsend;
+  }
+  irsend = new IRsend(pin);
+  irsend->begin();
+
   saveSettings();
-  begin(pin, channel);
 }
 
 void IRBlaster::cycleTxPin() {
@@ -128,8 +148,16 @@ void IRBlaster::cycleTxPin() {
 }
 
 void IRBlaster::setRxPin(uint8_t new_rx) {
+  if (new_rx == rx_pin && initialized) return;
   rx_pin = new_rx;
   pinMode(rx_pin, INPUT_PULLUP);
+
+  if (irrecv) {
+    irrecv->disableIRIn();
+    delete irrecv;
+  }
+  irrecv = new IRrecv(rx_pin, 1024, 50, true);
+
   saveSettings();
 }
 
@@ -160,21 +188,6 @@ void IRBlaster::cycleRepeats() {
   saveSettings();
 }
 
-void IRBlaster::setConfigFrequency(uint32_t f) {
-  setFrequency(f);
-  saveSettings();
-}
-
-void IRBlaster::cycleFrequency() {
-  const uint32_t f_opts[] = {38000, 36000, 40000, 56000};
-  int idx = -1;
-  for (int i = 0; i < 4; i++) {
-    if (f_opts[i] == current_freq) { idx = i; break; }
-  }
-  uint32_t next_f = (idx >= 0) ? f_opts[(idx + 1) % 4] : 38000;
-  setConfigFrequency(next_f);
-}
-
 void IRBlaster::setJammerMode(uint8_t m) {
   jammer_mode = m % 3;
   saveSettings();
@@ -194,18 +207,86 @@ String IRBlaster::getJammerModeName() const {
   }
 }
 
+void IRBlaster::startIRReceiver() {
+  if (!initialized) begin();
+  if (!irrecv) {
+    irrecv = new IRrecv(rx_pin, 1024, 50, true);
+  }
+  pinMode(rx_pin, INPUT_PULLUP);
+  irrecv->enableIRIn();
+}
+
+void IRBlaster::stopIRReceiver() {
+  if (irrecv) {
+    irrecv->disableIRIn();
+  }
+}
+
+bool IRBlaster::decodeIR(decode_results *results) {
+  if (!irrecv || !results) return false;
+  return irrecv->decode(results);
+}
+
+void IRBlaster::resumeIR() {
+  if (irrecv) {
+    irrecv->resume();
+  }
+}
+
+bool IRBlaster::readIRSignal(String &proto, uint32_t &addr, uint32_t &cmd, uint32_t &raw, uint16_t &bits) {
+  if (!irrecv) startIRReceiver();
+  decode_results results;
+  if (!irrecv->decode(&results)) {
+    return false;
+  }
+
+  proto = typeToString(results.decode_type, results.repeat);
+  if (results.decode_type == decode_type_t::UNKNOWN || proto.length() == 0) {
+    proto = "RAW";
+  }
+  addr = results.address;
+  cmd = results.command;
+  raw = (uint32_t)(results.value & 0xFFFFFFFF);
+  bits = results.bits;
+
+  irrecv->resume();
+  return true;
+}
+
+void IRBlaster::sendDecodedResult(const decode_results *result) {
+  if (!result) return;
+  if (!initialized) begin();
+
+  bool wasListening = (irrecv != nullptr);
+  if (wasListening) irrecv->disableIRIn();
+
+  for (uint8_t r = 0; r <= tx_repeats; r++) {
+    if (result->decode_type == decode_type_t::UNKNOWN) {
+      uint16_t *rawarray = resultToRawArray(result);
+      uint16_t rawlen = getCorrectedRawLength(result);
+      irsend->sendRaw(rawarray, rawlen, 38000);
+      delete[] rawarray;
+    } else {
+      irsend->send(result->decode_type, result->value, result->bits);
+    }
+    if (r < tx_repeats) delay(40);
+  }
+
+  digitalWrite(pin, LOW);
+  if (wasListening) irrecv->enableIRIn();
+}
+
 void IRBlaster::sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz) {
   if (!initialized) begin();
-  if (!buf || len == 0) return;
-  setFrequency(freq_hz > 0 ? freq_hz : 38000);
-  for (uint16_t i = 0; i < len; i++) {
-    if ((i % 2) == 0) {
-      mark(buf[i]);
-    } else {
-      space(buf[i]);
-    }
-  }
-  space(0);
+  if (!buf || len == 0 || !irsend) return;
+
+  bool wasListening = (irrecv != nullptr);
+  if (wasListening) irrecv->disableIRIn();
+
+  irsend->sendRaw(buf, len, freq_hz > 0 ? (uint16_t)(freq_hz / 1000 * 1000) : 38000);
+  digitalWrite(pin, LOW);
+
+  if (wasListening) irrecv->enableIRIn();
 }
 
 void IRBlaster::sendParsedCode(const struct IrCode *code) {
@@ -252,52 +333,183 @@ void IRBlaster::sendRawCode(const struct RawIrCode *code) {
   const uint32_t freq_hz = (freq_khz > 0) ? (uint32_t)freq_khz * 1000 : 38000;
   const uint8_t numpairs = code->numpairs;
 
-  for (uint8_t k = 0; k < numpairs; k++) {
-    rawData[k * 2] = (uint16_t)(code->times[k * 2]);
-    rawData[(k * 2) + 1] = (uint16_t)(code->times[(k * 2) + 1]);
+  for (uint8_t i = 0; i < numpairs; i++) {
+    rawData[i * 2] = code->times[i * 2] * 10;
+    rawData[(i * 2) + 1] = code->times[(i * 2) + 1] * 10;
   }
 
   sendRaw(rawData, numpairs * 2, freq_hz);
 }
 
+void IRBlaster::sendNEC32(uint32_t data, uint8_t repeats) {
+  if (!initialized) begin();
+  bool wasListening = (irrecv != nullptr);
+  if (wasListening) irrecv->disableIRIn();
+
+  uint8_t total_repeats = (repeats > 0) ? repeats : tx_repeats;
+  for (uint8_t r = 0; r <= total_repeats; r++) {
+    irsend->sendNEC(data, 32);
+    if (r < total_repeats) delay(40);
+  }
+
+  digitalWrite(pin, LOW);
+  if (wasListening) irrecv->enableIRIn();
+}
+
+void IRBlaster::sendNEC(uint16_t address, uint8_t command, uint8_t repeats) {
+  if (!initialized) begin();
+  uint64_t data = irsend->encodeNEC(address, command);
+  sendNEC32((uint32_t)data, repeats);
+}
+
+void IRBlaster::sendPanasonic48(uint64_t data) {
+  if (!initialized) begin();
+  bool wasListening = (irrecv != nullptr);
+  if (wasListening) irrecv->disableIRIn();
+
+  for (uint8_t r = 0; r <= tx_repeats; r++) {
+    irsend->sendPanasonic64(data, 48);
+    if (r < tx_repeats) delay(40);
+  }
+
+  digitalWrite(pin, LOW);
+  if (wasListening) irrecv->enableIRIn();
+}
+
+void IRBlaster::sendPanasonic(uint16_t address, uint8_t device, uint8_t subdevice, uint8_t command) {
+  uint64_t data = 0;
+  data |= ((uint64_t)(address & 0xFF)) << 40;
+  data |= ((uint64_t)((address >> 8) & 0xFF)) << 32;
+  data |= ((uint64_t)device) << 24;
+  data |= ((uint64_t)subdevice) << 16;
+  data |= ((uint64_t)command) << 8;
+  uint8_t checksum = (device ^ subdevice ^ command);
+  data |= ((uint64_t)checksum);
+  sendPanasonic48(data);
+}
+
+void IRBlaster::sendPanasonicTV(uint8_t cmd) {
+  sendPanasonic(0x4004, 0x01, 0x00, cmd);
+}
+
+void IRBlaster::sendFairyLights(FairyLightCmd cmd) {
+  uint8_t cmd_byte = 0;
+  switch (cmd) {
+    case FAIRY_CMD_ON:       cmd_byte = 0x05; break;
+    case FAIRY_CMD_OFF:      cmd_byte = 0x06; break;
+    case FAIRY_CMD_MODE_1:   cmd_byte = 0x09; break;
+    case FAIRY_CMD_MODE_2:   cmd_byte = 0x0A; break;
+    case FAIRY_CMD_MODE_3:   cmd_byte = 0x0B; break;
+    case FAIRY_CMD_MODE_4:   cmd_byte = 0x0C; break;
+    case FAIRY_CMD_MODE_5:   cmd_byte = 0x0D; break;
+    case FAIRY_CMD_MODE_6:   cmd_byte = 0x0E; break;
+    case FAIRY_CMD_MODE_7:   cmd_byte = 0x0F; break;
+    case FAIRY_CMD_MODE_8:   cmd_byte = 0x10; break;
+    case FAIRY_CMD_DIM_UP:   cmd_byte = 0x07; break;
+    case FAIRY_CMD_DIM_DOWN: cmd_byte = 0x08; break;
+    case FAIRY_CMD_TIMER:    cmd_byte = 0x11; break;
+    default: return;
+  }
+  sendNEC(0x00FF, cmd_byte, tx_repeats);
+}
+
+void IRBlaster::sendLEDStrip(LedStripCmd cmd) {
+  uint8_t cmd_byte = 0;
+  switch (cmd) {
+    case LED_CMD_POWER_ON:   cmd_byte = 0x02; break;
+    case LED_CMD_POWER_OFF:  cmd_byte = 0x03; break;
+    case LED_CMD_BRIGHT_UP:  cmd_byte = 0x00; break;
+    case LED_CMD_BRIGHT_DOWN:cmd_byte = 0x01; break;
+    case LED_CMD_SPEED_UP:   cmd_byte = 0x07; break;
+    case LED_CMD_SPEED_DOWN: cmd_byte = 0x06; break;
+    case LED_CMD_MODE_NEXT:  cmd_byte = 0x04; break;
+    case LED_CMD_MUSIC:      cmd_byte = 0x05; break;
+    case LED_CMD_AUTO:       cmd_byte = 0x0F; break;
+    case LED_CMD_RED:        cmd_byte = 0x09; break;
+    case LED_CMD_GREEN:      cmd_byte = 0x0A; break;
+    case LED_CMD_BLUE:       cmd_byte = 0x0B; break;
+    case LED_CMD_WHITE:      cmd_byte = 0x0C; break;
+    case LED_CMD_FLASH:      cmd_byte = 0x10; break;
+    case LED_CMD_STROBE:     cmd_byte = 0x11; break;
+    case LED_CMD_FADE:       cmd_byte = 0x12; break;
+    case LED_CMD_SMOOTH:     cmd_byte = 0x13; break;
+    default: return;
+  }
+  sendNEC(0x00FF, cmd_byte, tx_repeats);
+}
+
+void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
+  if (!initialized) begin();
+  bool wasListening = (irrecv != nullptr);
+  if (wasListening) irrecv->disableIRIn();
+
+  pinMode(pin, OUTPUT);
+  uint32_t period_us = 1000000 / (freq_hz > 0 ? freq_hz : 38000);
+  uint32_t half_period = period_us / 2;
+  if (half_period < 5) half_period = 13;
+
+  switch (mode) {
+    case 0: // Basic 38k
+      for (int i = 0; i < 70; i++) {
+        digitalWrite(pin, HIGH);
+        delayMicroseconds(half_period);
+        digitalWrite(pin, LOW);
+        delayMicroseconds(half_period);
+      }
+      delayMicroseconds(200);
+      break;
+    case 1: // Random Jitter
+      for (int i = 0; i < 50; i++) {
+        uint32_t hp = random(8, 25);
+        digitalWrite(pin, HIGH);
+        delayMicroseconds(hp);
+        digitalWrite(pin, LOW);
+        delayMicroseconds(hp);
+      }
+      break;
+    case 2: // Sweep 36k - 56k
+      const uint32_t freqs[] = {36000, 38000, 40000, 56000};
+      for (int f = 0; f < 4; f++) {
+        uint32_t hp = (1000000 / freqs[f]) / 2;
+        for (int i = 0; i < 20; i++) {
+          digitalWrite(pin, HIGH);
+          delayMicroseconds(hp);
+          digitalWrite(pin, LOW);
+          delayMicroseconds(hp);
+        }
+      }
+      break;
+  }
+  digitalWrite(pin, LOW);
+  if (wasListening) irrecv->enableIRIn();
+}
+
 bool IRBlaster::runTVBGoneBatch(uint8_t batch_type, std::function<bool(uint16_t current, uint16_t total, const char* name)> progressCb) {
   if (!initialized) begin();
-
-  uint16_t total = 0;
-  if (batch_type == 0) {
-    // Merged: Europe first, then North America, then Universal Parsed & Raw
-    total = num_EUcodes + num_NAcodes + num_UniversalParsedCodes + num_UniversalRawCodes;
-  } else if (batch_type == 1) {
-    // Europe + Universal
-    total = num_EUcodes + num_UniversalParsedCodes + num_UniversalRawCodes;
-  } else {
-    // North America + Universal
-    total = num_NAcodes + num_UniversalParsedCodes + num_UniversalRawCodes;
-  }
+  uint16_t total = num_UniversalParsedCodes + num_UniversalRawCodes;
+  if (batch_type == TVB_BATCH_ALL_EU_THEN_NA || batch_type == TVB_BATCH_EU) total += num_EUcodes;
+  if (batch_type == TVB_BATCH_ALL_EU_THEN_NA || batch_type == TVB_BATCH_NA) total += num_NAcodes;
 
   uint16_t current = 0;
 
-  // 1. EU Codes
-  if (batch_type == 0 || batch_type == 1) {
+  if (batch_type == TVB_BATCH_ALL_EU_THEN_NA || batch_type == TVB_BATCH_EU) {
     for (uint8_t i = 0; i < num_EUcodes; i++) {
       current++;
-      if (progressCb && !progressCb(current, total, "EU Region")) return false;
+      if (progressCb && !progressCb(current, total, "EU Power")) return false;
       sendParsedCode(EUpowerCodes[i]);
       delay(25);
     }
   }
 
-  // 2. NA Codes
-  if (batch_type == 0 || batch_type == 2) {
+  if (batch_type == TVB_BATCH_ALL_EU_THEN_NA || batch_type == TVB_BATCH_NA) {
     for (uint8_t i = 0; i < num_NAcodes; i++) {
       current++;
-      if (progressCb && !progressCb(current, total, "NA Region")) return false;
+      if (progressCb && !progressCb(current, total, "NA Power")) return false;
       sendParsedCode(NApowerCodes[i]);
       delay(25);
     }
   }
 
-  // 3. Universal Parsed
   for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
     current++;
     if (progressCb && !progressCb(current, total, "Universal Parsed")) return false;
@@ -305,7 +517,6 @@ bool IRBlaster::runTVBGoneBatch(uint8_t batch_type, std::function<bool(uint16_t 
     delay(25);
   }
 
-  // 4. Universal Raw
   for (uint8_t i = 0; i < num_UniversalRawCodes; i++) {
     current++;
     if (progressCb && !progressCb(current, total, "Universal Raw")) return false;
@@ -316,321 +527,273 @@ bool IRBlaster::runTVBGoneBatch(uint8_t batch_type, std::function<bool(uint16_t 
   return true;
 }
 
-bool IRBlaster::readIRSignal(String &proto, uint32_t &addr, uint32_t &cmd, uint32_t &raw, uint16_t &bits) {
-  pinMode(rx_pin, INPUT_PULLUP);
-
-  // Quick poll: if line is idle (HIGH), wait up to 30ms for a falling edge
-  uint32_t t0 = micros();
-  while (digitalRead(rx_pin) == HIGH) {
-    if (micros() - t0 > 30000) return false;
+// -------------------------------------------------------------
+// Custom Remotes Management & File System
+// -------------------------------------------------------------
+bool IRBlaster::initFilesystem() {
+  if (!LittleFS.begin(true)) {
+    Serial.println("[IR] LittleFS mount failed");
+    return false;
   }
-
-  // Active carrier turns receiver output LOW
-  unsigned long startLow = pulseIn(rx_pin, LOW, 20000); // expect ~9000us for NEC
-  if (startLow < 1500) return false; // glitch / noise
-
-  unsigned long startHigh = pulseIn(rx_pin, HIGH, 10000); // expect ~4500us
-
-  // Check NEC Header (~9000us LOW, ~4500us HIGH)
-  if (startLow >= 7000 && startLow <= 11000 && startHigh >= 3000 && startHigh <= 6000) {
-    uint8_t bytes[4] = {0, 0, 0, 0};
-    for (int b = 0; b < 4; b++) {
-      for (int bit = 0; bit < 8; bit++) {
-        unsigned long bitLow = pulseIn(rx_pin, LOW, 2500);
-        unsigned long bitHigh = pulseIn(rx_pin, HIGH, 3500);
-        if (bitLow == 0 || bitHigh == 0) return false;
-        if (bitHigh > 1000) {
-          bytes[b] |= (1 << bit);
-        }
-      }
-    }
-    proto = "NEC";
-    raw = ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) | ((uint32_t)bytes[2] << 8) | bytes[3];
-    bits = 32;
-    addr = ((uint32_t)bytes[0] << 8) | bytes[1];
-    cmd = bytes[2];
-    return true;
+  if (!LittleFS.exists("/BruceIR")) {
+    LittleFS.mkdir("/BruceIR");
   }
-
-  // Sony SIRC Header (~2400us LOW)
-  if (startLow >= 1800 && startLow <= 3000 && startHigh >= 400 && startHigh <= 1000) {
-    uint32_t data = 0;
-    int bCount = 0;
-    for (int i = 0; i < 20; i++) {
-      unsigned long bitLow = pulseIn(rx_pin, LOW, 2000);
-      unsigned long bitHigh = pulseIn(rx_pin, HIGH, 2000);
-      if (bitLow == 0) break;
-      bCount++;
-      if (bitLow > 900) {
-        data |= ((uint32_t)1 << i);
-      }
-    }
-    proto = "SONY SIRC";
-    raw = data;
-    bits = bCount;
-    cmd = data & 0x7F;
-    addr = (data >> 7);
-    return true;
-  }
-
-  // Generic / RAW pulse
-  proto = "RAW PULSE";
-  raw = startLow;
-  addr = startHigh;
-  cmd = 0;
-  bits = 1;
   return true;
 }
 
-void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
-  if (!initialized) begin();
-  setFrequency(freq_hz > 0 ? freq_hz : 38000);
-  switch (mode) {
-    case 0:
-      for (int i = 0; i < 60; i++) {
-        mark(12);
-        space(12);
+std::vector<String> IRBlaster::listCustomRemotes() {
+  std::vector<String> list;
+  initFilesystem();
+
+  File root = LittleFS.open("/BruceIR");
+  if (root && root.isDirectory()) {
+    File file = root.openNextFile();
+    while (file) {
+      String fname = String(file.name());
+      if (fname.endsWith(".ir")) {
+        list.push_back(fname);
       }
-      break;
-    case 1:
-      for (int i = 0; i < 40; i++) {
-        mark(random(10, 30));
-        space(random(10, 50));
-      }
-      break;
-    case 2:
-      setFrequency(36000);
-      for (int i = 0; i < 15; i++) { mark(14); space(14); }
-      setFrequency(38000);
-      for (int i = 0; i < 15; i++) { mark(13); space(13); }
-      setFrequency(40000);
-      for (int i = 0; i < 15; i++) { mark(12); space(12); }
-      setFrequency(56000);
-      for (int i = 0; i < 15; i++) { mark(9); space(9); }
-      break;
+      file = root.openNextFile();
+    }
   }
-  space(0);
-}
 
-// NEC Protocol (32-bit MSB-to-LSB grouped into bytes, each byte sent LSB-first)
-void IRBlaster::sendNEC32(uint32_t data, uint8_t repeats) {
-  if (!initialized) begin();
-  setFrequency(38000);
-
-  // NEC Leader
-  mark(9000);
-  space(4500);
-
-  // 4 Bytes: (data>>24), (data>>16), (data>>8), (data & 0xFF)
-  for (int b = 3; b >= 0; b--) {
-    uint8_t byte_val = (data >> (b * 8)) & 0xFF;
-    for (int bit = 0; bit < 8; bit++) {
-      mark(560);
-      if ((byte_val >> bit) & 1) {
-        space(1690); // Logical 1
-      } else {
-        space(560);  // Logical 0
+  // Also check SD card if mounted
+  if (SD.cardType() != CARD_NONE && SD.exists("/BruceIR")) {
+    File sdRoot = SD.open("/BruceIR");
+    if (sdRoot && sdRoot.isDirectory()) {
+      File file = sdRoot.openNextFile();
+      while (file) {
+        String fname = String(file.name());
+        if (fname.endsWith(".ir")) {
+          // Check for duplicate
+          bool dup = false;
+          for (const auto &item : list) {
+            if (item == fname) { dup = true; break; }
+          }
+          if (!dup) list.push_back(fname);
+        }
+        file = sdRoot.openNextFile();
       }
     }
   }
 
-  // Stop bit
-  mark(560);
-  space(0);
-
-  // Optional repeats
-  for (uint8_t r = 0; r < repeats; r++) {
-    delay(40);
-    mark(9000);
-    space(2250);
-    mark(560);
-    space(0);
-  }
+  return list;
 }
 
-void IRBlaster::sendNEC(uint16_t address, uint8_t command, uint8_t repeats) {
-  uint32_t raw_data = 0;
-  if ((address & 0xFF00) == 0) {
-    // Standard 8-bit address: Byte0 = Addr, Byte1 = ~Addr
-    raw_data = ((uint32_t)address << 24) | (((uint32_t)(~address & 0xFF)) << 16);
-  } else {
-    // Extended 16-bit address
-    raw_data = ((uint32_t)(address & 0xFF) << 24) | (((uint32_t)((address >> 8) & 0xFF)) << 16);
+bool IRBlaster::loadRemote(const String &nameOrPath, CustomRemote &remote) {
+  initFilesystem();
+  String path = nameOrPath;
+  if (!path.startsWith("/")) {
+    path = "/BruceIR/" + path;
   }
-  raw_data |= ((uint32_t)command << 8) | ((uint32_t)(~command & 0xFF));
+  if (!path.endsWith(".ir")) {
+    path += ".ir";
+  }
 
-  sendNEC32(raw_data, repeats);
-}
+  File file;
+  if (LittleFS.exists(path)) {
+    file = LittleFS.open(path, "r");
+  } else if (SD.cardType() != CARD_NONE && SD.exists(path)) {
+    file = SD.open(path, "r");
+  }
 
-// Panasonic / Kaseikyo Protocol (48-bit, 36.7kHz carrier)
-void IRBlaster::sendPanasonic48(uint64_t data) {
-  if (!initialized) begin();
-  setFrequency(36700);
+  if (!file) {
+    Serial.printf("[IR] Failed to open remote file: %s\n", path.c_str());
+    return false;
+  }
 
-  // Panasonic Header
-  mark(3500);
-  space(1750);
+  remote.filename = path.substring(path.lastIndexOf('/') + 1);
+  remote.name = remote.filename.substring(0, remote.filename.lastIndexOf('.'));
+  remote.buttons.clear();
 
-  // 6 Bytes transmitted from high to low byte, each byte LSB first
-  for (int b = 5; b >= 0; b--) {
-    uint8_t byte_val = (data >> (b * 8)) & 0xFF;
-    for (int bit = 0; bit < 8; bit++) {
-      mark(432);
-      if ((byte_val >> bit) & 1) {
-        space(1296); // Logical 1
-      } else {
-        space(432);  // Logical 0
+  CustomIRButton curBtn;
+  bool inBtn = false;
+
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) continue;
+
+    if (line.startsWith("#")) {
+      if (inBtn && curBtn.name.length() > 0) {
+        remote.buttons.push_back(curBtn);
+        curBtn = CustomIRButton();
+        inBtn = false;
+      }
+      continue;
+    }
+
+    int colon = line.indexOf(':');
+    if (colon < 0) continue;
+    String key = line.substring(0, colon);
+    String val = line.substring(colon + 1);
+    key.trim();
+    val.trim();
+
+    if (key.equalsIgnoreCase("name")) {
+      if (inBtn && curBtn.name.length() > 0) {
+        remote.buttons.push_back(curBtn);
+        curBtn = CustomIRButton();
+      }
+      curBtn.name = val;
+      inBtn = true;
+    } else if (key.equalsIgnoreCase("type")) {
+      curBtn.type = val;
+    } else if (key.equalsIgnoreCase("protocol")) {
+      curBtn.protocol = val;
+    } else if (key.equalsIgnoreCase("address")) {
+      curBtn.address = strtoul(val.c_str(), nullptr, 16);
+    } else if (key.equalsIgnoreCase("command")) {
+      curBtn.command = strtoul(val.c_str(), nullptr, 16);
+    } else if (key.equalsIgnoreCase("value")) {
+      val.replace(" ", "");
+      curBtn.value = strtoull(val.c_str(), nullptr, 16);
+    } else if (key.equalsIgnoreCase("bits")) {
+      curBtn.bits = val.toInt();
+    } else if (key.equalsIgnoreCase("frequency")) {
+      curBtn.frequency = val.toInt();
+    } else if (key.equalsIgnoreCase("data")) {
+      curBtn.type = "raw";
+      char *token = strtok((char*)val.c_str(), " ");
+      while (token != nullptr) {
+        curBtn.rawData.push_back((uint16_t)atoi(token));
+        token = strtok(nullptr, " ");
       }
     }
   }
-
-  // Stop bit
-  mark(432);
-  space(0);
-
-  // Return to standard 38kHz
-  setFrequency(38000);
+  if (inBtn && curBtn.name.length() > 0) {
+    remote.buttons.push_back(curBtn);
+  }
+  file.close();
+  return true;
 }
 
-void IRBlaster::sendPanasonic(uint16_t address, uint8_t device, uint8_t subdevice, uint8_t command) {
-  uint8_t checksum = device ^ subdevice ^ command;
-  uint64_t data = ((uint64_t)(address >> 8) << 40) |
-                  ((uint64_t)(address & 0xFF) << 32) |
-                  ((uint64_t)device << 24) |
-                  ((uint64_t)subdevice << 16) |
-                  ((uint64_t)command << 8) |
-                  ((uint64_t)checksum);
-  sendPanasonic48(data);
+bool IRBlaster::saveRemote(const CustomRemote &remote) {
+  initFilesystem();
+  String fname = remote.name;
+  if (!fname.endsWith(".ir")) fname += ".ir";
+  String path = "/BruceIR/" + fname;
+
+  File file = LittleFS.open(path, "w");
+  if (!file) return false;
+
+  file.println("Filetype: Bruce IR File");
+  file.println("Version: 1");
+  file.println("#");
+  file.println("# " + remote.name);
+
+  for (const auto &btn : remote.buttons) {
+    file.println("name: " + btn.name);
+    if (btn.type.equalsIgnoreCase("raw")) {
+      file.println("type: raw");
+      file.println("frequency: " + String(btn.frequency > 0 ? btn.frequency : 38000));
+      file.println("duty_cycle: 0.330000");
+      file.print("data:");
+      for (size_t i = 0; i < btn.rawData.size(); i++) {
+        file.print(" ");
+        file.print(btn.rawData[i]);
+      }
+      file.println();
+    } else {
+      file.println("type: parsed");
+      file.println("protocol: " + btn.protocol);
+      file.println("address: " + uint32ToHexStr(btn.address));
+      file.println("command: " + uint32ToHexStr(btn.command));
+      file.println("bits: " + String(btn.bits > 0 ? btn.bits : 32));
+      char valHex[24];
+      snprintf(valHex, sizeof(valHex), "%08llX", (unsigned long long)btn.value);
+      file.println("value: " + String(valHex));
+    }
+    file.println("#");
+  }
+  file.close();
+  return true;
 }
 
-void IRBlaster::sendPanasonicTV(uint8_t cmd) {
-  // Address 0x4004, Device 0x01, Subdevice 0x00
-  uint8_t checksum = 0x01 ^ 0x00 ^ cmd;
-  uint64_t packet = ((uint64_t)0x4004 << 32) |
-                    ((uint64_t)0x0100 << 16) |
-                    ((uint64_t)cmd << 8) |
-                    checksum;
-  sendPanasonic48(packet);
-  last_tx_info = "Panasonic TV (0x" + String(cmd, HEX) + ")";
-  Serial.printf("[IR TX] Panasonic TV Command 0x%02X (48-bit: 0x%04X%04X%04X)\n",
-                cmd, (uint16_t)(packet >> 32), (uint16_t)(packet >> 16), (uint16_t)packet);
+bool IRBlaster::deleteRemote(const String &nameOrPath) {
+  initFilesystem();
+  String fname = nameOrPath;
+  if (!fname.endsWith(".ir")) fname += ".ir";
+  String path = "/BruceIR/" + fname;
+
+  bool removed = false;
+  if (LittleFS.exists(path)) {
+    removed |= LittleFS.remove(path);
+  }
+  if (SD.cardType() != CARD_NONE && SD.exists(path)) {
+    removed |= SD.remove(path);
+  }
+  return removed;
 }
 
-void IRBlaster::sendFairyLights(FairyLightCmd cmd) {
-  uint32_t code_var1 = 0;
-  uint32_t code_var2 = 0;
-  String name = "";
+bool IRBlaster::appendButtonToRemote(const String &remoteName, const CustomIRButton &btn) {
+  CustomRemote rem;
+  loadRemote(remoteName, rem);
+  rem.name = remoteName;
+  rem.buttons.push_back(btn);
+  return saveRemote(rem);
+}
 
-  switch (cmd) {
-    case FAIRY_CMD_ON:
-      code_var1 = 0x00FF02FD; code_var2 = 0x00FF40BF; name = "ON"; break;
-    case FAIRY_CMD_OFF:
-      code_var1 = 0x00FF827D; code_var2 = 0x00FF19E6; name = "OFF"; break;
-    case FAIRY_CMD_MODE_1:
-      code_var1 = 0x00FF04FB; code_var2 = 0x00FF0CF3; name = "Mode 1 (Comb)"; break;
-    case FAIRY_CMD_MODE_2:
-      code_var1 = 0x00FF05FA; code_var2 = 0x00FF18E7; name = "Mode 2 (Waves)"; break;
-    case FAIRY_CMD_MODE_3:
-      code_var1 = 0x00FF06F9; code_var2 = 0x00FF5EA1; name = "Mode 3 (Seq)"; break;
-    case FAIRY_CMD_MODE_4:
-      code_var1 = 0x00FF07F8; code_var2 = 0x00FF08F7; name = "Mode 4 (Slo-Glo)"; break;
-    case FAIRY_CMD_MODE_5:
-      code_var1 = 0x00FF08F7; code_var2 = 0x00FF1CE3; name = "Mode 5 (Chase)"; break;
-    case FAIRY_CMD_MODE_6:
-      code_var1 = 0x00FF09F6; code_var2 = 0x00FF5AA5; name = "Mode 6 (Fade)"; break;
-    case FAIRY_CMD_MODE_7:
-      code_var1 = 0x00FF0AF5; code_var2 = 0x00FF42BD; name = "Mode 7 (Twinkle)"; break;
-    case FAIRY_CMD_MODE_8:
-      code_var1 = 0x00FF0BF4; code_var2 = 0x00FF52AD; name = "Mode 8 (Steady)"; break;
-    case FAIRY_CMD_DIM_UP:
-      code_var1 = 0x00FF10EF; code_var2 = 0x00FF15EA; name = "DIM +"; break;
-    case FAIRY_CMD_DIM_DOWN:
-      code_var1 = 0x00FF11EE; code_var2 = 0x00FF09F6; name = "DIM -"; break;
-    case FAIRY_CMD_TIMER:
-      code_var1 = 0x00FF03FC; code_var2 = 0x00FF08F7; name = "TIMER"; break;
+void IRBlaster::sendCustomButton(const CustomIRButton &btn) {
+  if (!initialized) begin();
+  bool wasListening = (irrecv != nullptr);
+  if (wasListening) irrecv->disableIRIn();
+
+  for (uint8_t r = 0; r <= tx_repeats; r++) {
+    if (btn.type.equalsIgnoreCase("raw") && !btn.rawData.empty()) {
+      irsend->sendRaw(btn.rawData.data(), btn.rawData.size(), btn.frequency > 0 ? btn.frequency : 38000);
+    } else {
+      decode_type_t dt = strToDecodeType(btn.protocol.c_str());
+      if (dt != decode_type_t::UNKNOWN) {
+        if (dt == decode_type_t::NEC) {
+          uint64_t data = irsend->encodeNEC(btn.address, btn.command);
+          if (data == 0 && btn.value != 0) data = btn.value;
+          irsend->sendNEC(data, btn.bits > 0 ? btn.bits : 32);
+        } else if (dt == decode_type_t::SAMSUNG) {
+          uint64_t data = irsend->encodeSAMSUNG(btn.address, btn.command);
+          if (data == 0 && btn.value != 0) data = btn.value;
+          irsend->sendSAMSUNG(data, btn.bits > 0 ? btn.bits : 32);
+        } else if (dt == decode_type_t::SONY) {
+          irsend->sendSony(btn.value != 0 ? btn.value : btn.command, btn.bits > 0 ? btn.bits : 12);
+        } else if (dt == decode_type_t::RC5) {
+          uint16_t data = (btn.value != 0) ? (uint16_t)btn.value : irsend->encodeRC5(btn.address, btn.command);
+          irsend->sendRC5(data, btn.bits > 0 ? btn.bits : 13);
+        } else if (dt == decode_type_t::RC6) {
+          uint64_t data = (btn.value != 0) ? btn.value : irsend->encodeRC6(btn.address, btn.command);
+          irsend->sendRC6(data, btn.bits > 0 ? btn.bits : 20);
+        } else if (dt == decode_type_t::PANASONIC) {
+          irsend->sendPanasonic64(btn.value, btn.bits > 0 ? btn.bits : 48);
+        } else {
+          irsend->send(dt, btn.value != 0 ? btn.value : btn.command, btn.bits > 0 ? btn.bits : 32);
+        }
+      } else if (btn.value != 0) {
+        irsend->sendNEC(btn.value, btn.bits > 0 ? btn.bits : 32);
+      }
+    }
+    if (r < tx_repeats) delay(40);
   }
 
-  // Transmit primary variant
-  sendNEC32(code_var1);
-  // Wait 45ms and transmit alternative variant (guarantees compatibility with all Chinese window fairy light batches)
-  delay(45);
-  sendNEC32(code_var2);
-
-  last_tx_info = "Fairy Lights: " + name;
-  Serial.printf("[IR TX] Window Fairy Lights: %s (0x%08X / 0x%08X)\n", name.c_str(), code_var1, code_var2);
+  digitalWrite(pin, LOW);
+  if (wasListening) irrecv->enableIRIn();
 }
 
-void IRBlaster::sendLEDStrip(LedStripCmd cmd) {
-  uint32_t code_primary = 0;
-  uint32_t code_alt = 0;
-  String name = "";
-
-  switch (cmd) {
-    case LED_CMD_POWER_ON:
-      code_primary = 0x00FFA25D; code_alt = 0x00FF02FD; name = "Power ON"; break;
-    case LED_CMD_POWER_OFF:
-      code_primary = 0x00FFE21D; code_alt = 0x00FF827D; name = "Power OFF"; break;
-    case LED_CMD_BRIGHT_UP:
-      code_primary = 0x00FF5AA5; code_alt = 0x00FF00FF; name = "Bright +"; break;
-    case LED_CMD_BRIGHT_DOWN:
-      code_primary = 0x00FF10EF; code_alt = 0x00FF807F; name = "Bright -"; break;
-    case LED_CMD_SPEED_UP:
-      code_primary = 0x00FF22DD; code_alt = 0x00F7E817; name = "Speed +"; break;
-    case LED_CMD_SPEED_DOWN:
-      code_primary = 0x00FF32CD; code_alt = 0x00F7C837; name = "Speed -"; break;
-    case LED_CMD_MODE_NEXT:
-      code_primary = 0x00FF12ED; code_alt = 0x00F7D02F; name = "Mode +"; break;
-    case LED_CMD_MUSIC:
-      code_primary = 0x00FF08F7; code_alt = 0x00FF52AD; name = "Music Mode"; break;
-    case LED_CMD_AUTO:
-      code_primary = 0x00FF30CF; code_alt = 0x00FF32CD; name = "Auto Effect"; break;
-    case LED_CMD_RED:
-      code_primary = 0x00FF1AE5; code_alt = 0x00F720DF; name = "Red"; break;
-    case LED_CMD_GREEN:
-      code_primary = 0x00FF9A65; code_alt = 0x00F7A05F; name = "Green"; break;
-    case LED_CMD_BLUE:
-      code_primary = 0x00FFA25D; code_alt = 0x00F7609F; name = "Blue"; break;
-    case LED_CMD_WHITE:
-      code_primary = 0x00FF22DD; code_alt = 0x00F7E01F; name = "White"; break;
-    case LED_CMD_FLASH:
-      code_primary = 0x00FF5EA1; code_alt = 0x00FFD02F; name = "Flash"; break;
-    case LED_CMD_STROBE:
-      code_primary = 0x00FF0CF3; code_alt = 0x00FFF00F; name = "Strobe"; break;
-    case LED_CMD_FADE:
-      code_primary = 0x00FF16E9; code_alt = 0x00FFC837; name = "Fade"; break;
-    case LED_CMD_SMOOTH:
-      code_primary = 0x00FF0DF2; code_alt = 0x00FFE817; name = "Smooth"; break;
-  }
-
-  // Transmit primary code from user's learned remote
-  if (code_primary != 0) {
-    sendNEC32(code_primary);
-  }
-  // If alternative exists and differs, send it as fallback after 35ms
-  if (code_alt != 0 && code_alt != code_primary) {
-    delay(35);
-    sendNEC32(code_alt);
-  }
-
-  last_tx_info = "SP611E: " + name;
-  Serial.printf("[IR TX] SP611E LED: %s (Primary: 0x%08X, Alt: 0x%08X)\n", name.c_str(), code_primary, code_alt);
-}
-
+// -------------------------------------------------------------
+// Test Loop
+// -------------------------------------------------------------
 void IRBlaster::startLoop(IRLoopTarget target, uint32_t interval_ms) {
-  loop_active = true;
+  if (!initialized) begin();
   loop_target = target;
   loop_interval_ms = interval_ms;
-  last_loop_tx_ms = millis() - interval_ms; // Trigger immediate first burst
   loop_cycle_count = 0;
   loop_sub_step = 0;
-  last_tx_info = "Starting 3s Loop...";
-  Serial.printf("[IR Loop] Started target %d with %u ms interval\n", (int)target, interval_ms);
+  last_loop_tx_ms = millis() - interval_ms;
+  loop_active = true;
+  last_tx_info = "Loop Started";
 }
 
 void IRBlaster::stopLoop() {
   loop_active = false;
   last_tx_info = "Loop Stopped";
-  Serial.println("[IR Loop] Stopped");
 }
 
 uint32_t IRBlaster::getNextTxRemainingMs(uint32_t now) const {
@@ -642,63 +805,36 @@ uint32_t IRBlaster::getNextTxRemainingMs(uint32_t now) const {
 
 void IRBlaster::main(uint32_t currentTime) {
   if (!loop_active) return;
+  if (currentTime - last_loop_tx_ms < loop_interval_ms) return;
 
-  if (currentTime - last_loop_tx_ms >= loop_interval_ms) {
-    last_loop_tx_ms = currentTime;
-    loop_cycle_count++;
+  last_loop_tx_ms = currentTime;
+  loop_cycle_count++;
 
-    switch (loop_target) {
-      case IR_LOOP_FAIRY_LIGHTS: {
-        // Cycle through all 8 modes: Mode 1 -> 2 -> ... -> 8 -> 1...
-        FairyLightCmd modes[8] = {
-          FAIRY_CMD_MODE_1, FAIRY_CMD_MODE_2, FAIRY_CMD_MODE_3, FAIRY_CMD_MODE_4,
-          FAIRY_CMD_MODE_5, FAIRY_CMD_MODE_6, FAIRY_CMD_MODE_7, FAIRY_CMD_MODE_8
-        };
-        uint8_t mode_idx = loop_sub_step % 8;
-        sendFairyLights(modes[mode_idx]);
-        last_tx_info = "Fairy Mode " + String(mode_idx + 1);
-        loop_sub_step++;
-        break;
-      }
-
-      case IR_LOOP_LED_STRIP: {
-        // Cycle colors: Red -> Green -> Blue -> White -> Fade -> Flash
-        LedStripCmd colors[6] = {
-          LED_CMD_RED, LED_CMD_GREEN, LED_CMD_BLUE,
-          LED_CMD_WHITE, LED_CMD_FADE, LED_CMD_FLASH
-        };
-        const char* color_names[6] = {"Red", "Green", "Blue", "White", "Fade", "Flash"};
-        uint8_t c_idx = loop_sub_step % 6;
-        sendLEDStrip(colors[c_idx]);
-        last_tx_info = String("LED: ") + color_names[c_idx];
-        loop_sub_step++;
-        break;
-      }
-
-      case IR_LOOP_PANASONIC_TV: {
-        // Panasonic TV Power Toggle
-        sendPanasonicTV(PANASONIC_CMD_POWER);
-        last_tx_info = "Panasonic TV Power";
-        break;
-      }
-
-      case IR_LOOP_UNIVERSAL_ALL: {
-        // Burst for all 3 targets
-        FairyLightCmd modes[8] = {
-          FAIRY_CMD_MODE_1, FAIRY_CMD_MODE_2, FAIRY_CMD_MODE_3, FAIRY_CMD_MODE_4,
-          FAIRY_CMD_MODE_5, FAIRY_CMD_MODE_6, FAIRY_CMD_MODE_7, FAIRY_CMD_MODE_8
-        };
-        sendFairyLights(modes[loop_sub_step % 8]);
-        delay(60);
-        sendLEDStrip(LED_CMD_FLASH);
-        delay(60);
-        sendPanasonicTV(PANASONIC_CMD_POWER);
-        last_tx_info = "Universal Burst #" + String(loop_cycle_count);
-        loop_sub_step++;
-        break;
-      }
+  switch (loop_target) {
+    case IR_LOOP_FAIRY_LIGHTS: {
+      uint8_t mode = loop_sub_step % 8;
+      sendFairyLights((FairyLightCmd)(FAIRY_CMD_MODE_1 + mode));
+      last_tx_info = "Fairy Mode " + String(mode + 1);
+      loop_sub_step++;
+      break;
     }
-
-    Serial.printf("[IR 3s Loop #%u] Transmitted: %s\n", loop_cycle_count, last_tx_info.c_str());
+    case IR_LOOP_LED_STRIP: {
+      const LedStripCmd cmds[] = {LED_CMD_RED, LED_CMD_GREEN, LED_CMD_BLUE, LED_CMD_WHITE, LED_CMD_FLASH};
+      uint8_t idx = loop_sub_step % 5;
+      sendLEDStrip(cmds[idx]);
+      last_tx_info = "LED Step " + String(idx + 1);
+      loop_sub_step++;
+      break;
+    }
+    case IR_LOOP_PANASONIC_TV: {
+      sendPanasonicTV(PANASONIC_CMD_POWER);
+      last_tx_info = "TV Power (" + String(loop_cycle_count) + ")";
+      break;
+    }
+    case IR_LOOP_UNIVERSAL_ALL: {
+      sendJamBurst(2, 38000);
+      last_tx_info = "Sweep Burst (" + String(loop_cycle_count) + ")";
+      break;
+    }
   }
 }

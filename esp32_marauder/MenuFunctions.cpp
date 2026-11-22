@@ -1026,7 +1026,7 @@ void MenuFunctions::main(uint32_t currentTime)
                                    (wifi_scan_obj.currentScanMode == OTA_UPDATE) ||
                                    wifi_scan_obj.background_scan;
       if (menu_nav_active && current_menu && current_menu->list && current_menu->list->size() > 0) {
-        // TOP BUTTON (GPIO 14 / u_btn): Click = UP, Hold (>= 400ms) = BACK
+        // TOP BUTTON (GPIO 14 / u_btn): Click = Scroll DOWN, Hold (>= 400ms) = BACK
         static uint32_t u_btn_down_ms = 0;
         static bool u_btn_held_done = false;
 
@@ -1042,15 +1042,15 @@ void MenuFunctions::main(uint32_t currentTime)
         } else {
           if (u_btn_down_ms != 0) {
             if (!u_btn_held_done && (millis() - u_btn_down_ms < 400)) {
-              // Short click Top -> Move UP
-              this->navUp();
+              // Short click Top -> Move DOWN
+              this->navDown();
             }
             u_btn_down_ms = 0;
             u_btn_held_done = false;
           }
         }
 
-        // BOTTOM BUTTON (GPIO 0 / d_btn): Click = DOWN, Hold (>= 400ms) = OK / SELECT
+        // BOTTOM BUTTON (GPIO 0 / d_btn / BOOT): Click = OK / SELECT, Hold (>= 400ms) = MENU / QUICK ACTIONS
         static uint32_t d_btn_down_ms = 0;
         static bool d_btn_held_done = false;
 
@@ -1059,15 +1059,32 @@ void MenuFunctions::main(uint32_t currentTime)
             d_btn_down_ms = millis();
             d_btn_held_done = false;
           } else if (!d_btn_held_done && (millis() - d_btn_down_ms >= 400)) {
-            // Long press Bottom -> OK / RUN
+            // Long press Bottom (BOOT / OK) -> Context Menu / Remote Management
             d_btn_held_done = true;
-            this->navOk();
+            #ifdef HAS_IR
+              if (current_menu == &irCustomMenu || current_menu == &irTvMenu ||
+                  current_menu == &irFairyMenu || current_menu == &irLedMenu ||
+                  current_menu == &irSubRemoteMenu) {
+                this->buildIrManageMenu();
+                this->changeMenu(&irManageMenu, true);
+              } else if (current_menu == &irManageMenu) {
+                this->buildIrConfigMenu();
+                this->changeMenu(&irConfigMenu, true);
+              } else if (current_menu == &irMenu) {
+                this->buildIrConfigMenu();
+                this->changeMenu(&irConfigMenu, true);
+              } else {
+                this->navBack();
+              }
+            #else
+              this->navBack();
+            #endif
           }
         } else {
           if (d_btn_down_ms != 0) {
             if (!d_btn_held_done && (millis() - d_btn_down_ms < 400)) {
-              // Short click Bottom -> Move DOWN
-              this->navDown();
+              // Short click Bottom -> OK / RUN
+              this->navOk();
             }
             d_btn_down_ms = 0;
             d_btn_held_done = false;
@@ -2981,6 +2998,9 @@ void MenuFunctions::RunSetup()
   irLedMenu.list = new LinkedList<MenuNode>();
   irLoopMenu.list = new LinkedList<MenuNode>();
   irConfigMenu.list = new LinkedList<MenuNode>();
+  irManageMenu.list = new LinkedList<MenuNode>();
+  irSubRemoteMenu.list = new LinkedList<MenuNode>();
+  irDeleteRemoteMenu.list = new LinkedList<MenuNode>();
 
   irMenu.name = "IR Remote";
   irTvBGoneMenu.name = "TV-B-Gone";
@@ -2991,12 +3011,18 @@ void MenuFunctions::RunSetup()
   irLedMenu.name = "SP611E LED";
   irLoopMenu.name = "IR 3s Loop";
   irConfigMenu.name = "IR Config";
+  irManageMenu.name = "Manage Remotes";
+  irSubRemoteMenu.name = "Remote";
+  irDeleteRemoteMenu.name = "Delete Remote";
 
   irMenu.parentMenu = &mainMenu;
   irTvBGoneMenu.parentMenu = &irMenu;
   irJammerMenu.parentMenu = &irMenu;
   irCustomMenu.parentMenu = &irMenu;
   irConfigMenu.parentMenu = &irMenu;
+  irManageMenu.parentMenu = &irCustomMenu;
+  irSubRemoteMenu.parentMenu = &irCustomMenu;
+  irDeleteRemoteMenu.parentMenu = &irManageMenu;
 
   irTvMenu.parentMenu = &irCustomMenu;
   irFairyMenu.parentMenu = &irCustomMenu;
@@ -3014,6 +3040,7 @@ void MenuFunctions::RunSetup()
     this->changeMenu(&irJammerMenu, true);
   });
   this->addNodes(&irMenu, "Custom Remotes", TFTGREEN, GENERAL_APPS, [this]() {
+    this->buildIrCustomMenu();
     this->changeMenu(&irCustomMenu, true);
   });
   this->addNodes(&irMenu, "IR Read (Sniffer)", TFTCYAN, GENERAL_APPS, [this]() {
@@ -3021,6 +3048,7 @@ void MenuFunctions::RunSetup()
   });
   this->addNodes(&irMenu, "IR Config", TFTYELLOW, DEVICE, [this]() {
     this->buildIrConfigMenu();
+    irConfigMenu.parentMenu = &irMenu;
     this->changeMenu(&irConfigMenu, true);
   });
 
@@ -7967,7 +7995,7 @@ void MenuFunctions::runIrBlinkTest() {
   display_obj.tft.drawCentreString("Press BOOT (IO 0) to Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
   // Pin setup
-  const uint8_t pin = IR_TX_PIN;
+  const uint8_t pin = ir_blaster_obj.getPin();
   pinMode(pin, OUTPUT);
   digitalWrite(pin, LOW);
 
@@ -8209,18 +8237,437 @@ void MenuFunctions::buildIrConfigMenu() {
     this->buildIrConfigMenu();
     this->changeMenu(&irConfigMenu, true);
   });
-  String freqText = "Carrier: " + String(ir_blaster_obj.getFrequency() / 1000) + " kHz";
-  this->addNodes(&irConfigMenu, freqText.c_str(), TFTMAGENTA, 0, [this]() {
-    ir_blaster_obj.cycleFrequency();
+}
+
+void MenuFunctions::buildIrCustomMenu() {
+  if (irCustomMenu.list != nullptr) {
+    irCustomMenu.list->clear();
+  } else {
+    irCustomMenu.list = new LinkedList<MenuNode>();
+  }
+  irCustomMenu.parentMenu = &irMenu;
+  irCustomMenu.name = "Custom Remotes";
+
+  // Item 0: Back
+  this->addNodes(&irCustomMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irCustomMenu.parentMenu, true);
+  });
+
+  // Item 1: [Manage Remotes] (Quick management & config access)
+  this->addNodes(&irCustomMenu, "[Manage Remotes]", TFTYELLOW, GENERAL_APPS, [this]() {
+    this->buildIrManageMenu();
+    this->changeMenu(&irManageMenu, true);
+  });
+
+  // Built-in presets
+  this->addNodes(&irCustomMenu, "Panasonic TV", TFTCYAN, GENERAL_APPS, [this]() {
+    this->changeMenu(&irTvMenu, true);
+  });
+  this->addNodes(&irCustomMenu, "Window Lights (1-8)", TFTYELLOW, GENERAL_APPS, [this]() {
+    this->changeMenu(&irFairyMenu, true);
+  });
+  this->addNodes(&irCustomMenu, "SP611E LED Strip", TFTGREEN, GENERAL_APPS, [this]() {
+    this->changeMenu(&irLedMenu, true);
+  });
+
+  // Dynamically load custom user remotes from LittleFS / SD (/BruceIR/*.ir)
+  std::vector<String> customList = ir_blaster_obj.listCustomRemotes();
+  for (const auto &rf : customList) {
+    String disp = rf;
+    if (disp.endsWith(".ir")) disp = disp.substring(0, disp.length() - 3);
+    this->addNodes(&irCustomMenu, disp.c_str(), TFTWHITE, GENERAL_APPS, [this, rf]() {
+      this->buildIrSubRemoteMenu(rf);
+      this->changeMenu(&irSubRemoteMenu, true);
+    });
+  }
+
+  // Tests & loops
+  this->addNodes(&irCustomMenu, "IR 3s Loop (Test)", TFTMAGENTA, BEACON_SPAM, [this]() {
+    this->changeMenu(&irLoopMenu, true);
+  });
+  this->addNodes(&irCustomMenu, "IR Blink & Log Test", TFTORANGE, BEACON_SPAM, [this]() {
+    this->runIrBlinkTest();
+  });
+}
+
+void MenuFunctions::buildIrManageMenu() {
+  if (irManageMenu.list != nullptr) {
+    irManageMenu.list->clear();
+  } else {
+    irManageMenu.list = new LinkedList<MenuNode>();
+  }
+  irManageMenu.parentMenu = &irCustomMenu;
+  irManageMenu.name = "Manage Remotes";
+
+  this->addNodes(&irManageMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->buildIrCustomMenu();
+    this->changeMenu(irManageMenu.parentMenu, true);
+  });
+  this->addNodes(&irManageMenu, "+ Learn Remote (IR Read)", TFTGREEN, GENERAL_APPS, [this]() {
+    this->runLearnRemoteWizard();
+  });
+  this->addNodes(&irManageMenu, "+ Add Key to Remote", TFTCYAN, GENERAL_APPS, [this]() {
+    std::vector<String> list = ir_blaster_obj.listCustomRemotes();
+    if (list.empty()) {
+      this->runAddKeyWizard("Custom");
+    } else {
+      this->runAddKeyWizard(list[0]);
+    }
+  });
+  this->addNodes(&irManageMenu, "- Delete Remote", TFTRED, GENERAL_APPS, [this]() {
+    this->buildIrDeleteRemoteMenu();
+    this->changeMenu(&irDeleteRemoteMenu, true);
+  });
+  this->addNodes(&irManageMenu, "IR Config (Pins & Rpts)", TFTYELLOW, DEVICE, [this]() {
     this->buildIrConfigMenu();
+    irConfigMenu.parentMenu = &irManageMenu;
     this->changeMenu(&irConfigMenu, true);
   });
-  String jamText = "Jam Mode: " + ir_blaster_obj.getJammerModeName();
-  this->addNodes(&irConfigMenu, jamText.c_str(), TFTORANGE, 0, [this]() {
-    ir_blaster_obj.cycleJammerMode();
-    this->buildIrConfigMenu();
-    this->changeMenu(&irConfigMenu, true);
+}
+
+void MenuFunctions::buildIrSubRemoteMenu(const String &remoteFile) {
+  if (irSubRemoteMenu.list != nullptr) {
+    irSubRemoteMenu.list->clear();
+  } else {
+    irSubRemoteMenu.list = new LinkedList<MenuNode>();
+  }
+  irSubRemoteMenu.parentMenu = &irCustomMenu;
+
+  CustomRemote rem;
+  ir_blaster_obj.loadRemote(remoteFile, rem);
+  irSubRemoteMenu.name = rem.name.length() > 0 ? rem.name : "Remote";
+
+  this->addNodes(&irSubRemoteMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->buildIrCustomMenu();
+    this->changeMenu(irSubRemoteMenu.parentMenu, true);
   });
+  this->addNodes(&irSubRemoteMenu, "[+ Add Key to Remote]", TFTGREEN, GENERAL_APPS, [this, remoteFile]() {
+    this->runAddKeyWizard(remoteFile);
+  });
+
+  for (const auto &btn : rem.buttons) {
+    CustomIRButton b = btn;
+    this->addNodes(&irSubRemoteMenu, b.name.c_str(), TFTCYAN, 0, [b]() {
+      ir_blaster_obj.sendCustomButton(b);
+    });
+  }
+}
+
+void MenuFunctions::buildIrDeleteRemoteMenu() {
+  if (irDeleteRemoteMenu.list != nullptr) {
+    irDeleteRemoteMenu.list->clear();
+  } else {
+    irDeleteRemoteMenu.list = new LinkedList<MenuNode>();
+  }
+  irDeleteRemoteMenu.parentMenu = &irManageMenu;
+  irDeleteRemoteMenu.name = "Delete Remote";
+
+  this->addNodes(&irDeleteRemoteMenu, text09, TFTLIGHTGREY, 0, [this]() {
+    this->changeMenu(irDeleteRemoteMenu.parentMenu, true);
+  });
+
+  std::vector<String> list = ir_blaster_obj.listCustomRemotes();
+  if (list.empty()) {
+    this->addNodes(&irDeleteRemoteMenu, "(No custom remotes)", TFTLIGHTGREY, 0, []() {});
+    return;
+  }
+
+  for (const auto &rf : list) {
+    String disp = rf;
+    if (disp.endsWith(".ir")) disp = disp.substring(0, disp.length() - 3);
+    this->addNodes(&irDeleteRemoteMenu, disp.c_str(), TFTRED, GENERAL_APPS, [this, rf]() {
+      ir_blaster_obj.deleteRemote(rf);
+      this->buildIrDeleteRemoteMenu();
+      this->changeMenu(&irDeleteRemoteMenu, true);
+    });
+  }
+}
+
+void MenuFunctions::runLearnRemoteWizard() {
+  display_obj.clearScreen();
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  const char *templates[] = {"TV Remote", "AC Remote", "Lights", "Custom"};
+  const size_t numTemplates = 4;
+  int selTpl = 0;
+
+  auto drawTplSelect = [&]() {
+    display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
+    display_obj.tft.drawCentreString("CHOOSE TEMPLATE", SCREEN_WIDTH / 2, 4, 2);
+
+    for (size_t i = 0; i < numTemplates; i++) {
+      int y = 30 + i * 26;
+      uint16_t bg = (i == (size_t)selTpl) ? TFT_GREEN : TFT_BLACK;
+      uint16_t fg = (i == (size_t)selTpl) ? TFT_BLACK : TFT_WHITE;
+      display_obj.tft.fillRect(10, y, SCREEN_WIDTH - 20, 22, bg);
+      display_obj.tft.setTextColor(fg, bg);
+      display_obj.tft.drawString(templates[i], 20, y + 3, 2);
+    }
+
+    display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    display_obj.tft.drawCentreString("IO 14: Down | IO 0: Pick", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  };
+
+  drawTplSelect();
+
+  while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
+
+  bool picked = false;
+  while (!picked) {
+    if (digitalRead(14) == LOW) {
+      uint32_t t0 = millis();
+      while (digitalRead(14) == LOW) delay(10);
+      if (millis() - t0 >= 400) {
+        display_obj.init();
+        this->changeMenu(current_menu, true);
+        return;
+      }
+      selTpl = (selTpl + 1) % numTemplates;
+      drawTplSelect();
+    }
+    if (digitalRead(0) == LOW) {
+      while (digitalRead(0) == LOW) delay(10);
+      picked = true;
+    }
+    delay(10);
+  }
+
+  std::vector<String> keys;
+  String remoteName = templates[selTpl];
+  if (selTpl == 0) {
+    keys = {"POWER", "VOL+", "VOL-", "CH+", "CH-", "MUTE", "OK", "BACK", "MENU", "INPUT", "1", "2", "3"};
+  } else if (selTpl == 1) {
+    keys = {"POWER", "TEMP+", "TEMP-", "MODE", "SPEED", "SWING"};
+  } else if (selTpl == 2) {
+    keys = {"ON", "OFF", "BRIGHT+", "BRIGHT-", "RED", "GREEN", "BLUE", "WHITE", "FLASH", "FADE"};
+  } else {
+    keys = {"KEY_1", "KEY_2", "KEY_3", "KEY_4", "KEY_5", "KEY_6", "KEY_7", "KEY_8"};
+  }
+
+  CustomRemote newRem;
+  String baseName = remoteName;
+  baseName.replace(" ", "_");
+  String finalName = baseName;
+  int counter = 1;
+  while (LittleFS.exists("/BruceIR/" + finalName + ".ir")) {
+    finalName = baseName + "_" + String(counter++);
+  }
+  newRem.name = finalName;
+  newRem.filename = finalName + ".ir";
+
+  ir_blaster_obj.startIRReceiver();
+
+  for (size_t k = 0; k < keys.size(); k++) {
+    display_obj.clearScreen();
+    display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_NAVY);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
+    display_obj.tft.drawCentreString("LEARN: " + newRem.name, SCREEN_WIDTH / 2, 4, 2);
+
+    display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    display_obj.tft.drawCentreString("Key " + String(k + 1) + " of " + String(keys.size()), SCREEN_WIDTH / 2, 30, 1);
+
+    display_obj.tft.fillRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_DARKCYAN);
+    display_obj.tft.drawRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_WHITE);
+    display_obj.tft.setTextColor(TFT_YELLOW, TFT_DARKCYAN);
+    display_obj.tft.drawCentreString("PRESS: " + keys[k], SCREEN_WIDTH / 2, 56, 2);
+
+    display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    display_obj.tft.drawCentreString("Point remote at RX (GPIO " + String(ir_blaster_obj.getRxPin()) + ")", SCREEN_WIDTH / 2, 92, 1);
+
+    display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    display_obj.tft.drawCentreString("IO 14: Skip | IO 0 Hold: Save & Done", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+
+    ir_blaster_obj.resumeIR();
+    bool captured = false;
+    bool skip = false;
+    bool finishAll = false;
+
+    while (!captured && !skip && !finishAll) {
+      decode_results res;
+      if (ir_blaster_obj.decodeIR(&res)) {
+        CustomIRButton btn;
+        btn.name = keys[k];
+        if (res.decode_type == decode_type_t::UNKNOWN) {
+          btn.type = "raw";
+          btn.frequency = 38000;
+          uint16_t *rawarray = resultToRawArray(&res);
+          uint16_t rawlen = getCorrectedRawLength(&res);
+          for (uint16_t r = 0; r < rawlen; r++) {
+            btn.rawData.push_back(rawarray[r]);
+          }
+          delete[] rawarray;
+        } else {
+          btn.type = "parsed";
+          btn.protocol = typeToString(res.decode_type, res.repeat);
+          btn.address = res.address;
+          btn.command = res.command;
+          btn.value = res.value;
+          btn.bits = res.bits;
+        }
+        newRem.buttons.push_back(btn);
+        captured = true;
+
+        display_obj.tft.fillRect(10, 110, SCREEN_WIDTH - 20, 32, TFT_DARKGREEN);
+        display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+        display_obj.tft.drawCentreString("CAPTURED: " + btn.name + " (" + btn.protocol + ")", SCREEN_WIDTH / 2, 118, 1);
+        delay(600);
+      }
+
+      if (digitalRead(14) == LOW) {
+        while (digitalRead(14) == LOW) delay(10);
+        skip = true;
+      }
+
+      if (digitalRead(0) == LOW) {
+        uint32_t t0 = millis();
+        while (digitalRead(0) == LOW) delay(10);
+        if (millis() - t0 >= 400) {
+          finishAll = true;
+        }
+      }
+      delay(10);
+      yield();
+    }
+
+    if (finishAll) break;
+  }
+
+  ir_blaster_obj.stopIRReceiver();
+
+  if (!newRem.buttons.empty()) {
+    ir_blaster_obj.saveRemote(newRem);
+    display_obj.clearScreen();
+    display_obj.tft.fillRect(10, 50, SCREEN_WIDTH - 20, 60, TFT_DARKGREEN);
+    display_obj.tft.drawRect(10, 50, SCREEN_WIDTH - 20, 60, TFT_WHITE);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+    display_obj.tft.drawCentreString("REMOTE SAVED!", SCREEN_WIDTH / 2, 60, 2);
+    display_obj.tft.drawCentreString(newRem.name + " (" + String(newRem.buttons.size()) + " keys)", SCREEN_WIDTH / 2, 85, 1);
+    delay(1200);
+  }
+
+  display_obj.init();
+  this->buildIrCustomMenu();
+  this->changeMenu(&irCustomMenu, true);
+}
+
+void MenuFunctions::runAddKeyWizard(const String &remoteFile) {
+  display_obj.clearScreen();
+  display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
+  display_obj.tft.drawCentreString("ADD NEW KEY", SCREEN_WIDTH / 2, 4, 2);
+
+  const char *candidateNames[] = {"POWER", "VOL+", "VOL-", "CH+", "CH-", "MUTE", "INPUT", "MENU", "OK", "BACK", "KEY_X"};
+  const size_t numCandidate = 11;
+  int selKey = 0;
+
+  auto drawKeySelect = [&]() {
+    for (size_t i = 0; i < 4; i++) {
+      int idx = (selKey + i) % numCandidate;
+      int y = 30 + i * 24;
+      uint16_t bg = (i == 0) ? TFT_GREEN : TFT_BLACK;
+      uint16_t fg = (i == 0) ? TFT_BLACK : TFT_WHITE;
+      display_obj.tft.fillRect(10, y, SCREEN_WIDTH - 20, 20, bg);
+      display_obj.tft.setTextColor(fg, bg);
+      display_obj.tft.drawString(candidateNames[idx], 20, y + 2, 2);
+    }
+    display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    display_obj.tft.drawCentreString("IO 14: Next Key | IO 0: Pick", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  };
+
+  drawKeySelect();
+  while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
+
+  bool picked = false;
+  while (!picked) {
+    if (digitalRead(14) == LOW) {
+      uint32_t t0 = millis();
+      while (digitalRead(14) == LOW) delay(10);
+      if (millis() - t0 >= 400) {
+        display_obj.init();
+        this->changeMenu(current_menu, true);
+        return;
+      }
+      selKey = (selKey + 1) % numCandidate;
+      drawKeySelect();
+    }
+    if (digitalRead(0) == LOW) {
+      while (digitalRead(0) == LOW) delay(10);
+      picked = true;
+    }
+    delay(10);
+  }
+
+  String keyName = candidateNames[selKey];
+
+  display_obj.clearScreen();
+  display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_NAVY);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
+  display_obj.tft.drawCentreString("LEARN KEY: " + keyName, SCREEN_WIDTH / 2, 4, 2);
+
+  display_obj.tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  display_obj.tft.drawCentreString("Point remote at RX (GPIO " + String(ir_blaster_obj.getRxPin()) + ")", SCREEN_WIDTH / 2, 40, 1);
+  display_obj.tft.drawCentreString("Press button on remote...", SCREEN_WIDTH / 2, 60, 2);
+
+  display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display_obj.tft.drawCentreString("IO 14: Cancel", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+
+  ir_blaster_obj.startIRReceiver();
+  ir_blaster_obj.resumeIR();
+
+  bool captured = false;
+  CustomIRButton btn;
+  btn.name = keyName;
+
+  while (!captured) {
+    decode_results res;
+    if (ir_blaster_obj.decodeIR(&res)) {
+      if (res.decode_type == decode_type_t::UNKNOWN) {
+        btn.type = "raw";
+        btn.frequency = 38000;
+        uint16_t *rawarray = resultToRawArray(&res);
+        uint16_t rawlen = getCorrectedRawLength(&res);
+        for (uint16_t r = 0; r < rawlen; r++) {
+          btn.rawData.push_back(rawarray[r]);
+        }
+        delete[] rawarray;
+      } else {
+        btn.type = "parsed";
+        btn.protocol = typeToString(res.decode_type, res.repeat);
+        btn.address = res.address;
+        btn.command = res.command;
+        btn.value = res.value;
+        btn.bits = res.bits;
+      }
+      captured = true;
+    }
+
+    if (digitalRead(14) == LOW) {
+      while (digitalRead(14) == LOW) delay(10);
+      break;
+    }
+    delay(10);
+    yield();
+  }
+
+  ir_blaster_obj.stopIRReceiver();
+
+  if (captured) {
+    ir_blaster_obj.appendButtonToRemote(remoteFile, btn);
+    display_obj.tft.fillRect(10, 80, SCREEN_WIDTH - 20, 44, TFT_DARKGREEN);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+    display_obj.tft.drawCentreString("KEY ADDED SUCCESSFULLY!", SCREEN_WIDTH / 2, 88, 1);
+    display_obj.tft.drawCentreString(btn.name + " (" + btn.protocol + ")", SCREEN_WIDTH / 2, 104, 1);
+    delay(1000);
+  }
+
+  display_obj.init();
+  this->buildIrSubRemoteMenu(remoteFile);
+  this->changeMenu(&irSubRemoteMenu, true);
 }
 
 void MenuFunctions::runIrRead() {
@@ -8236,7 +8683,7 @@ void MenuFunctions::runIrRead() {
   // Exit / Action banner
   display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
   display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  display_obj.tft.drawCentreString("BOOT: Exit | IO 14: Replay", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  display_obj.tft.drawCentreString("IO 0: Replay | IO 14: Clear | Hold: Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
   // Status info
   display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
@@ -8246,68 +8693,84 @@ void MenuFunctions::runIrRead() {
 
   display_obj.tft.drawFastHLine(10, 56, SCREEN_WIDTH - 20, TFT_DARKGREY);
 
+  ir_blaster_obj.startIRReceiver();
+  ir_blaster_obj.resumeIR();
+
   uint32_t packetCount = 0;
-  String lastProto = "None";
-  uint32_t lastAddr = 0;
-  uint32_t lastCmd = 0;
-  uint32_t lastRaw = 0;
-  uint16_t lastBits = 0;
+  bool haveCode = false;
+  decode_results lastResults;
   uint32_t lastAnim = millis();
   bool animDot = false;
 
   pinMode(14, INPUT_PULLUP);
+  pinMode(0, INPUT_PULLUP);
   while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
 
   while (true) {
     if (digitalRead(0) == LOW) {
+      uint32_t t0 = millis();
       while (digitalRead(0) == LOW) delay(10);
-      break;
+      if (millis() - t0 >= 400) {
+        break;
+      } else {
+        if (haveCode) {
+          ir_blaster_obj.sendDecodedResult(&lastResults);
+          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
+          display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+          display_obj.tft.drawCentreString("REPLAYED ON GPIO " + String(ir_blaster_obj.getPin()), SCREEN_WIDTH / 2, 142, 1);
+          delay(400);
+          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
+        }
+      }
     }
 
-    // Button 14: Replay / Clone last captured signal via IR TX
-    if (digitalRead(14) == LOW && lastRaw != 0) {
+    if (digitalRead(14) == LOW) {
+      uint32_t t0 = millis();
       while (digitalRead(14) == LOW) delay(10);
-      ir_blaster_obj.sendNEC32(lastRaw);
-      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
-      display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-      display_obj.tft.drawCentreString("REPLAYED ON GPIO " + String(ir_blaster_obj.getPin()), SCREEN_WIDTH / 2, 142, 1);
-      delay(400);
-      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
+      if (millis() - t0 >= 400) {
+        break;
+      } else {
+        display_obj.tft.fillRect(0, 60, SCREEN_WIDTH, 90, TFT_BLACK);
+        display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        display_obj.tft.drawCentreString("Waiting for signal...", SCREEN_WIDTH / 2, 80, 2);
+        haveCode = false;
+        ir_blaster_obj.resumeIR();
+      }
     }
 
-    String proto;
-    uint32_t addr = 0, cmd = 0, raw = 0;
-    uint16_t bits = 0;
-
-    if (ir_blaster_obj.readIRSignal(proto, addr, cmd, raw, bits)) {
+    decode_results results;
+    if (ir_blaster_obj.decodeIR(&results)) {
       packetCount++;
-      lastProto = proto;
-      lastAddr = addr;
-      lastCmd = cmd;
-      lastRaw = raw;
-      lastBits = bits;
+      haveCode = true;
+      lastResults = results;
 
-      display_obj.tft.fillRect(0, 60, SCREEN_WIDTH, 120, TFT_BLACK);
+      String proto = typeToString(results.decode_type, results.repeat);
+      if (results.decode_type == decode_type_t::UNKNOWN || proto.length() == 0) {
+        proto = "RAW";
+      }
+
+      display_obj.tft.fillRect(0, 60, SCREEN_WIDTH, 90, TFT_BLACK);
 
       display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
       display_obj.tft.drawCentreString("CODE CAPTURED (#" + String(packetCount) + ")", SCREEN_WIDTH / 2, 62, 2);
 
       display_obj.tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-      display_obj.tft.drawString("Proto: " + lastProto + " (" + String(lastBits) + "b)", 15, 84, 2);
+      display_obj.tft.drawString("Proto: " + proto + " (" + String(results.bits) + "b)", 15, 84, 2);
 
       display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
-      char hexBuf[40];
-      snprintf(hexBuf, sizeof(hexBuf), "Addr: 0x%04X  Cmd: 0x%02X", (unsigned int)lastAddr, (unsigned int)lastCmd);
+      char hexBuf[50];
+      snprintf(hexBuf, sizeof(hexBuf), "Addr: 0x%04X  Cmd: 0x%02X", (unsigned int)results.address, (unsigned int)results.command);
       display_obj.tft.drawString(String(hexBuf), 15, 104, 1);
 
-      snprintf(hexBuf, sizeof(hexBuf), "HEX: 0x%08X", (unsigned int)lastRaw);
+      snprintf(hexBuf, sizeof(hexBuf), "HEX: 0x%08llX", (unsigned long long)results.value);
       display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
-      display_obj.tft.drawString(String(hexBuf), 15, 120, 2);
+      display_obj.tft.drawString(String(hexBuf), 15, 118, 2);
 
       display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-      display_obj.tft.drawString("[Press IO 14 to Replay]", 15, 142, 1);
+      display_obj.tft.drawString("[Press IO 0 to Replay]", 15, 138, 1);
 
-      delay(150);
+      ir_blaster_obj.resumeIR();
+      delay(200);
     }
 
     if (millis() - lastAnim >= 500) {
@@ -8318,6 +8781,7 @@ void MenuFunctions::runIrRead() {
     yield();
   }
 
+  ir_blaster_obj.stopIRReceiver();
   display_obj.init();
   this->changeMenu(current_menu, true);
 }

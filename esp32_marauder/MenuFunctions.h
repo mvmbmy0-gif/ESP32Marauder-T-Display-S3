@@ -240,11 +240,20 @@ class MenuFunctions
       Menu irLedMenu;
       Menu irLoopMenu;
       Menu irConfigMenu;
+      Menu irManageMenu;
+      Menu irSubRemoteMenu;
+      Menu irDeleteRemoteMenu;
       void runIrBlinkTest();
       void runTVBGone(uint8_t batch_type = 0);
       void runIrJammer(uint8_t mode = 2);
       void runIrRead();
       void buildIrConfigMenu();
+      void buildIrCustomMenu();
+      void buildIrManageMenu();
+      void buildIrSubRemoteMenu(const String &remoteFile);
+      void buildIrDeleteRemoteMenu();
+      void runLearnRemoteWizard();
+      void runAddKeyWizard(const String &remoteFile);
     #endif
 
     // Device menu stuff
