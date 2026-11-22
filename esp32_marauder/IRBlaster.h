@@ -126,6 +126,7 @@ class IRBlaster {
 
     IRsend *irsend;
     IRrecv *irrecv;
+    bool is_receiving;
 
     // Loop state
     bool loop_active;

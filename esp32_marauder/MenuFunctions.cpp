@@ -8358,17 +8358,21 @@ void MenuFunctions::buildIrSubRemoteMenu(const String &remoteFile) {
     }
   });
 
-  for (const auto &btn : rem.buttons) {
-    CustomIRButton b = btn;
-    this->addNodes(&irSubRemoteMenu, b.name.c_str(), TFTCYAN, 0, [this, b]() {
-      ir_blaster_obj.sendCustomButton(b);
-      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
-      display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-      display_obj.tft.drawCentreString("SENT: " + b.name + " (" + b.protocol + ")", SCREEN_WIDTH / 2, 142, 1);
-      delay(300);
-      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
-      this->displayCurrentMenu();
-    });
+  if (rem.buttons.empty()) {
+    this->addNodes(&irSubRemoteMenu, "(No keys recorded)", TFTLIGHTGREY, 0, []() {});
+  } else {
+    for (size_t i = 0; i < rem.buttons.size(); i++) {
+      CustomIRButton b = rem.buttons[i];
+      this->addNodes(&irSubRemoteMenu, b.name.c_str(), TFTCYAN, 0, [this, b]() {
+        ir_blaster_obj.sendCustomButton(b);
+        display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
+        display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+        display_obj.tft.drawCentreString("SENT: " + b.name, SCREEN_WIDTH / 2, 142, 1);
+        delay(200);
+        display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
+        this->drawStatusBar();
+      });
+    }
   }
 }
 
@@ -8426,7 +8430,7 @@ void MenuFunctions::runLearnRemoteWizard() {
 
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("IO 14: Down | IO 0: Pick", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
   };
 
   drawTplSelect();
@@ -8434,21 +8438,52 @@ void MenuFunctions::runLearnRemoteWizard() {
   while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
 
   bool picked = false;
+  uint32_t u_ms = 0;
+  bool u_held = false;
+  uint32_t d_ms = 0;
+  bool d_held = false;
+
   while (!picked) {
+    // TOP BUTTON (GPIO 14): Click = UP, Hold (>=400ms) = Back
     if (digitalRead(14) == LOW) {
-      uint32_t t0 = millis();
-      while (digitalRead(14) == LOW) delay(10);
-      if (millis() - t0 >= 400) {
+      if (u_ms == 0) {
+        u_ms = millis();
+        u_held = false;
+      } else if (!u_held && (millis() - u_ms >= 400)) {
+        u_held = true;
         display_obj.init();
         this->changeMenu(current_menu, true);
         return;
       }
-      selTpl = (selTpl + 1) % numTemplates;
-      drawTplSelect();
+    } else {
+      if (u_ms != 0) {
+        if (!u_held && (millis() - u_ms < 400)) {
+          selTpl = (selTpl > 0) ? selTpl - 1 : numTemplates - 1;
+          drawTplSelect();
+        }
+        u_ms = 0;
+        u_held = false;
+      }
     }
+
+    // BOTTOM BUTTON (GPIO 0): Click = DOWN, Hold (>=400ms) = OK / Pick
     if (digitalRead(0) == LOW) {
-      while (digitalRead(0) == LOW) delay(10);
-      picked = true;
+      if (d_ms == 0) {
+        d_ms = millis();
+        d_held = false;
+      } else if (!d_held && (millis() - d_ms >= 400)) {
+        d_held = true;
+        picked = true;
+      }
+    } else {
+      if (d_ms != 0) {
+        if (!d_held && (millis() - d_ms < 400)) {
+          selTpl = (selTpl + 1) % numTemplates;
+          drawTplSelect();
+        }
+        d_ms = 0;
+        d_held = false;
+      }
     }
     delay(10);
   }
@@ -8497,7 +8532,7 @@ void MenuFunctions::runLearnRemoteWizard() {
 
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("IO 14: Skip | IO 0 Hold: Save & Done", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("14: Skip (Hold: Exit) | 0 Hold: Done", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
     ir_blaster_obj.resumeIR();
     bool captured = false;
@@ -8541,8 +8576,13 @@ void MenuFunctions::runLearnRemoteWizard() {
       }
 
       if (digitalRead(14) == LOW) {
+        uint32_t t0 = millis();
         while (digitalRead(14) == LOW) delay(10);
-        skip = true;
+        if (millis() - t0 >= 400) {
+          finishAll = true;
+        } else {
+          skip = true;
+        }
       }
 
       if (digitalRead(0) == LOW) {
@@ -8599,28 +8639,59 @@ void MenuFunctions::runAddKeyWizard(const String &remoteFile) {
     }
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("IO 14: Next Key | IO 0: Pick", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
   };
 
   drawKeySelect();
   while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
 
   bool picked = false;
+  uint32_t u_ms = 0;
+  bool u_held = false;
+  uint32_t d_ms = 0;
+  bool d_held = false;
+
   while (!picked) {
+    // TOP BUTTON (GPIO 14): Click = UP, Hold (>=400ms) = Back
     if (digitalRead(14) == LOW) {
-      uint32_t t0 = millis();
-      while (digitalRead(14) == LOW) delay(10);
-      if (millis() - t0 >= 400) {
+      if (u_ms == 0) {
+        u_ms = millis();
+        u_held = false;
+      } else if (!u_held && (millis() - u_ms >= 400)) {
+        u_held = true;
         display_obj.init();
         this->changeMenu(current_menu, true);
         return;
       }
-      selKey = (selKey + 1) % numCandidate;
-      drawKeySelect();
+    } else {
+      if (u_ms != 0) {
+        if (!u_held && (millis() - u_ms < 400)) {
+          selKey = (selKey > 0) ? selKey - 1 : numCandidate - 1;
+          drawKeySelect();
+        }
+        u_ms = 0;
+        u_held = false;
+      }
     }
+
+    // BOTTOM BUTTON (GPIO 0): Click = DOWN, Hold (>=400ms) = OK / Pick
     if (digitalRead(0) == LOW) {
-      while (digitalRead(0) == LOW) delay(10);
-      picked = true;
+      if (d_ms == 0) {
+        d_ms = millis();
+        d_held = false;
+      } else if (!d_held && (millis() - d_ms >= 400)) {
+        d_held = true;
+        picked = true;
+      }
+    } else {
+      if (d_ms != 0) {
+        if (!d_held && (millis() - d_ms < 400)) {
+          selKey = (selKey + 1) % numCandidate;
+          drawKeySelect();
+        }
+        d_ms = 0;
+        d_held = false;
+      }
     }
     delay(10);
   }
@@ -8638,7 +8709,7 @@ void MenuFunctions::runAddKeyWizard(const String &remoteFile) {
 
   display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
   display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  display_obj.tft.drawCentreString("IO 14: Cancel", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  display_obj.tft.drawCentreString("14 / 0: Cancel", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
   ir_blaster_obj.startIRReceiver();
   ir_blaster_obj.resumeIR();
@@ -8674,8 +8745,8 @@ void MenuFunctions::runAddKeyWizard(const String &remoteFile) {
       }
     }
 
-    if (digitalRead(14) == LOW) {
-      while (digitalRead(14) == LOW) delay(10);
+    if (digitalRead(14) == LOW || digitalRead(0) == LOW) {
+      while (digitalRead(14) == LOW || digitalRead(0) == LOW) delay(10);
       break;
     }
     delay(10);
