@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 #include <FS.h>
-#include <LittleFS.h>
+#include <SPIFFS.h>
 #include <IRrecv.h>
 #include <IRsend.h>
 #include <IRutils.h>

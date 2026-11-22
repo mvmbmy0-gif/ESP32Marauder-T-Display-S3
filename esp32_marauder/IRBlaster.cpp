@@ -1,7 +1,7 @@
 #include "IRBlaster.h"
 #include "WORLD_IR_CODES.h"
 #include <Preferences.h>
-#include <SD.h>
+#include <SPIFFS.h>
 
 IRBlaster ir_blaster_obj;
 
@@ -568,12 +568,9 @@ bool IRBlaster::runTVBGoneBatch(uint8_t batch_type, std::function<bool(uint16_t 
 // Custom Remotes Management & File System
 // -------------------------------------------------------------
 bool IRBlaster::initFilesystem() {
-  if (!LittleFS.begin(true)) {
-    Serial.println("[IR] LittleFS mount failed");
-    return false;
-  }
-  if (!LittleFS.exists("/BruceIR")) {
-    LittleFS.mkdir("/BruceIR");
+  if (!SPIFFS.begin(false)) {
+    // If not mounted yet, do not format in hot loops
+    return SPIFFS.begin(true);
   }
   return true;
 }
@@ -582,35 +579,21 @@ std::vector<String> IRBlaster::listCustomRemotes() {
   std::vector<String> list;
   initFilesystem();
 
-  File root = LittleFS.open("/BruceIR");
-  if (root && root.isDirectory()) {
+  File root = SPIFFS.open("/");
+  if (root) {
     File file = root.openNextFile();
     while (file) {
       String fname = String(file.name());
+      if (fname.startsWith("/")) fname = fname.substring(1);
+      if (fname.startsWith("BruceIR/")) fname = fname.substring(8);
       if (fname.endsWith(".ir")) {
-        list.push_back(fname);
+        bool dup = false;
+        for (const auto &item : list) {
+          if (item == fname) { dup = true; break; }
+        }
+        if (!dup) list.push_back(fname);
       }
       file = root.openNextFile();
-    }
-  }
-
-  // Also check SD card if mounted
-  if (SD.cardType() != CARD_NONE && SD.exists("/BruceIR")) {
-    File sdRoot = SD.open("/BruceIR");
-    if (sdRoot && sdRoot.isDirectory()) {
-      File file = sdRoot.openNextFile();
-      while (file) {
-        String fname = String(file.name());
-        if (fname.endsWith(".ir")) {
-          // Check for duplicate
-          bool dup = false;
-          for (const auto &item : list) {
-            if (item == fname) { dup = true; break; }
-          }
-          if (!dup) list.push_back(fname);
-        }
-        file = sdRoot.openNextFile();
-      }
     }
   }
 
@@ -621,21 +604,24 @@ bool IRBlaster::loadRemote(const String &nameOrPath, CustomRemote &remote) {
   initFilesystem();
   String path = nameOrPath;
   if (!path.startsWith("/")) {
-    path = "/BruceIR/" + path;
+    path = "/" + path;
   }
   if (!path.endsWith(".ir")) {
     path += ".ir";
   }
 
   File file;
-  if (LittleFS.exists(path)) {
-    file = LittleFS.open(path, "r");
-  } else if (SD.cardType() != CARD_NONE && SD.exists(path)) {
-    file = SD.open(path, "r");
+  if (SPIFFS.exists(path)) {
+    file = SPIFFS.open(path, "r");
+  } else {
+    String altPath = "/BruceIR" + path;
+    if (SPIFFS.exists(altPath)) {
+      file = SPIFFS.open(altPath, "r");
+      path = altPath;
+    }
   }
 
   if (!file) {
-    Serial.printf("[IR] Failed to open remote file: %s\n", path.c_str());
     return false;
   }
 
@@ -709,9 +695,9 @@ bool IRBlaster::saveRemote(const CustomRemote &remote) {
   initFilesystem();
   String fname = remote.name;
   if (!fname.endsWith(".ir")) fname += ".ir";
-  String path = "/BruceIR/" + fname;
+  String path = "/" + fname;
 
-  File file = LittleFS.open(path, "w");
+  File file = SPIFFS.open(path, "w");
   if (!file) return false;
 
   file.println("Filetype: Bruce IR File");
@@ -751,14 +737,15 @@ bool IRBlaster::deleteRemote(const String &nameOrPath) {
   initFilesystem();
   String fname = nameOrPath;
   if (!fname.endsWith(".ir")) fname += ".ir";
-  String path = "/BruceIR/" + fname;
+  String path = "/" + fname;
 
   bool removed = false;
-  if (LittleFS.exists(path)) {
-    removed |= LittleFS.remove(path);
+  if (SPIFFS.exists(path)) {
+    removed |= SPIFFS.remove(path);
   }
-  if (SD.cardType() != CARD_NONE && SD.exists(path)) {
-    removed |= SD.remove(path);
+  String altPath = "/BruceIR" + path;
+  if (SPIFFS.exists(altPath)) {
+    removed |= SPIFFS.remove(altPath);
   }
   return removed;
 }

@@ -8470,7 +8470,7 @@ void MenuFunctions::runLearnRemoteWizard() {
   baseName.replace(" ", "_");
   String finalName = baseName;
   int counter = 1;
-  while (LittleFS.exists("/BruceIR/" + finalName + ".ir")) {
+  while (SPIFFS.exists("/" + finalName + ".ir") || SPIFFS.exists("/BruceIR/" + finalName + ".ir")) {
     finalName = baseName + "_" + String(counter++);
   }
   newRem.name = finalName;
