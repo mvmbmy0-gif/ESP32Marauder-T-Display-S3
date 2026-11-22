@@ -1026,7 +1026,7 @@ void MenuFunctions::main(uint32_t currentTime)
                                    (wifi_scan_obj.currentScanMode == OTA_UPDATE) ||
                                    wifi_scan_obj.background_scan;
       if (menu_nav_active && current_menu && current_menu->list && current_menu->list->size() > 0) {
-        // TOP BUTTON (GPIO 14 / u_btn): Click = Scroll DOWN, Hold (>= 400ms) = BACK
+        // TOP BUTTON (GPIO 14 / u_btn): Click = UP, Hold (>= 400ms) = BACK
         static uint32_t u_btn_down_ms = 0;
         static bool u_btn_held_done = false;
 
@@ -1042,15 +1042,15 @@ void MenuFunctions::main(uint32_t currentTime)
         } else {
           if (u_btn_down_ms != 0) {
             if (!u_btn_held_done && (millis() - u_btn_down_ms < 400)) {
-              // Short click Top -> Move DOWN
-              this->navDown();
+              // Short click Top -> Move UP
+              this->navUp();
             }
             u_btn_down_ms = 0;
             u_btn_held_done = false;
           }
         }
 
-        // BOTTOM BUTTON (GPIO 0 / d_btn / BOOT): Click = OK / SELECT, Hold (>= 400ms) = MENU / QUICK ACTIONS
+        // BOTTOM BUTTON (GPIO 0 / d_btn / BOOT): Click = DOWN, Hold (>= 400ms) = OK / SELECT
         static uint32_t d_btn_down_ms = 0;
         static bool d_btn_held_done = false;
 
@@ -1059,35 +1059,15 @@ void MenuFunctions::main(uint32_t currentTime)
             d_btn_down_ms = millis();
             d_btn_held_done = false;
           } else if (!d_btn_held_done && (millis() - d_btn_down_ms >= 400)) {
-            // Long press Bottom (BOOT / OK) -> Context Menu / Remote Management
+            // Long press Bottom -> OK / RUN
             d_btn_held_done = true;
-            #ifdef HAS_IR
-              if (current_menu == &irCustomMenu || current_menu == &irTvMenu ||
-                  current_menu == &irFairyMenu || current_menu == &irLedMenu ||
-                  current_menu == &irSubRemoteMenu) {
-                this->buildIrManageMenu();
-                this->changeMenu(&irManageMenu, true);
-              } else if (current_menu == &irManageMenu) {
-                this->buildIrConfigMenu();
-                irConfigMenu.parentMenu = &irManageMenu;
-                this->changeMenu(&irConfigMenu, true);
-              } else if (current_menu == &irMenu || current_menu == &irJammerMenu ||
-                         current_menu == &irTvBGoneMenu) {
-                this->buildIrConfigMenu();
-                irConfigMenu.parentMenu = current_menu;
-                this->changeMenu(&irConfigMenu, true);
-              } else {
-                this->navBack();
-              }
-            #else
-              this->navBack();
-            #endif
+            this->navOk();
           }
         } else {
           if (d_btn_down_ms != 0) {
             if (!d_btn_held_done && (millis() - d_btn_down_ms < 400)) {
-              // Short click Bottom -> OK / RUN
-              this->navOk();
+              // Short click Bottom -> Move DOWN
+              this->navDown();
             }
             d_btn_down_ms = 0;
             d_btn_held_done = false;
@@ -8731,7 +8711,7 @@ void MenuFunctions::runIrRead() {
   // Exit / Action banner
   display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
   display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  display_obj.tft.drawCentreString("Hold IO 14: Exit | IO 0: Replay", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  display_obj.tft.drawCentreString("BOOT: Exit | IO 14: Replay", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
   // Status info
   display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
@@ -8755,69 +8735,25 @@ void MenuFunctions::runIrRead() {
   while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
 
   while (true) {
+    // Button 0 (BOOT): Exit back to menu
     if (digitalRead(0) == LOW) {
-      uint32_t t0 = millis();
       while (digitalRead(0) == LOW) delay(10);
-      uint32_t pressDur = millis() - t0;
-      if (pressDur >= 400) {
-        if (haveCode) {
-          CustomIRButton btn;
-          String proto = typeToString(lastResults.decode_type, lastResults.repeat);
-          if (lastResults.decode_type == decode_type_t::UNKNOWN || proto.length() == 0) {
-            btn.type = "raw";
-            btn.protocol = "RAW";
-            btn.frequency = 38000;
-            uint16_t *rawarray = resultToRawArray(&lastResults);
-            uint16_t rawlen = getCorrectedRawLength(&lastResults);
-            for (uint16_t r = 0; r < rawlen; r++) {
-              btn.rawData.push_back(rawarray[r]);
-            }
-            delete[] rawarray;
-          } else {
-            btn.type = "parsed";
-            btn.protocol = proto;
-            btn.address = lastResults.address;
-            btn.command = lastResults.command;
-            btn.value = lastResults.value;
-            btn.bits = lastResults.bits;
-          }
-          btn.name = "Key_" + String(packetCount);
-          ir_blaster_obj.appendButtonToRemote("Captured", btn);
-
-          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_MAGENTA);
-          display_obj.tft.setTextColor(TFT_WHITE, TFT_MAGENTA);
-          display_obj.tft.drawCentreString("SAVED TO /BruceIR/Captured.ir", SCREEN_WIDTH / 2, 142, 1);
-          delay(700);
-          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
-        }
-      } else {
-        if (haveCode) {
-          ir_blaster_obj.sendDecodedResult(&lastResults);
-          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
-          display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-          display_obj.tft.drawCentreString("REPLAYED ON GPIO " + String(ir_blaster_obj.getPin()), SCREEN_WIDTH / 2, 142, 1);
-          delay(400);
-          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
-        }
-      }
+      break;
     }
 
-    if (digitalRead(14) == LOW) {
-      uint32_t t0 = millis();
+    // Button 14: Replay / Clone last captured signal via IR TX
+    if (digitalRead(14) == LOW && haveCode) {
       while (digitalRead(14) == LOW) delay(10);
-      if (millis() - t0 >= 400) {
-        break;
-      } else {
-        display_obj.tft.fillRect(0, 60, SCREEN_WIDTH, 90, TFT_BLACK);
-        display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        display_obj.tft.drawCentreString("Waiting for signal...", SCREEN_WIDTH / 2, 80, 2);
-        haveCode = false;
-        ir_blaster_obj.resumeIR();
-      }
+      ir_blaster_obj.sendDecodedResult(&lastResults);
+      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
+      display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+      display_obj.tft.drawCentreString("REPLAYED ON GPIO " + String(ir_blaster_obj.getPin()), SCREEN_WIDTH / 2, 142, 1);
+      delay(400);
+      display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
     }
 
     decode_results results;
-    if (!haveCode && ir_blaster_obj.decodeIR(&results)) {
+    if (ir_blaster_obj.decodeIR(&results)) {
       if (results.decode_type == decode_type_t::UNKNOWN && results.rawlen < 4) {
         ir_blaster_obj.resumeIR();
       } else {
@@ -8825,12 +8761,31 @@ void MenuFunctions::runIrRead() {
         haveCode = true;
         lastResults = results;
 
+        CustomIRButton btn;
         String proto = typeToString(results.decode_type, results.repeat);
         if (results.decode_type == decode_type_t::UNKNOWN || proto.length() == 0) {
           proto = "RAW";
+          btn.type = "raw";
+          btn.protocol = "RAW";
+          btn.frequency = 38000;
+          uint16_t *rawarray = resultToRawArray(&results);
+          uint16_t rawlen = getCorrectedRawLength(&results);
+          for (uint16_t r = 0; r < rawlen; r++) {
+            btn.rawData.push_back(rawarray[r]);
+          }
+          delete[] rawarray;
+        } else {
+          btn.type = "parsed";
+          btn.protocol = proto;
+          btn.address = results.address;
+          btn.command = results.command;
+          btn.value = results.value;
+          btn.bits = results.bits;
         }
+        btn.name = "Key_" + String(packetCount);
+        ir_blaster_obj.appendButtonToRemote("Captured", btn);
 
-        display_obj.tft.fillRect(0, 60, SCREEN_WIDTH, 90, TFT_BLACK);
+        display_obj.tft.fillRect(0, 60, SCREEN_WIDTH, 78, TFT_BLACK);
 
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
         display_obj.tft.drawCentreString("CODE CAPTURED (#" + String(packetCount) + ")", SCREEN_WIDTH / 2, 60, 2);
@@ -8847,8 +8802,7 @@ void MenuFunctions::runIrRead() {
         display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
         display_obj.tft.drawString(String(hexBuf), 15, 114, 2);
 
-        display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        display_obj.tft.drawString("[IO 0: Replay | IO 14: Next | Hold 0: Save]", 10, 136, 1);
+        ir_blaster_obj.resumeIR();
       }
     }
 
