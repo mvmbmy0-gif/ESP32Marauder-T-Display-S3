@@ -4,10 +4,14 @@
 #define IRBlaster_h
 
 #include <Arduino.h>
+#include <functional>
 #include "configs.h"
 
+struct IrCode;
+struct RawIrCode;
+
 #ifndef IR_TX_PIN
-  #define IR_TX_PIN 21
+  #define IR_TX_PIN 20
 #endif
 
 #ifndef IR_LEDC_CHANNEL
@@ -96,10 +100,21 @@ class IRBlaster {
     void begin(uint8_t tx_pin = IR_TX_PIN, uint8_t ledc_ch = IR_LEDC_CHANNEL);
 
     // Raw protocol transmitters
+    void sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz = 38000);
+    void sendParsedCode(const struct IrCode *code);
+    void sendRawCode(const struct RawIrCode *code);
     void sendNEC32(uint32_t data, uint8_t repeats = 0);
     void sendNEC(uint16_t address, uint8_t command, uint8_t repeats = 0);
     void sendPanasonic48(uint64_t data);
     void sendPanasonic(uint16_t address, uint8_t device, uint8_t subdevice, uint8_t command);
+
+    // Bruce-ported Tools: TV-B-Gone & IR Jammer
+    bool runTVBGoneBatch(uint8_t batch_type = 0, std::function<bool(uint16_t current, uint16_t total, const char* name)> progressCb = nullptr);
+    void sendJamBurst(uint8_t mode = 0, uint32_t freq_hz = 38000);
+
+    // Dynamic Pin configuration
+    void setPin(uint8_t new_pin);
+    uint8_t getPin() const { return pin; }
 
     // Device helpers
     void sendPanasonicTV(uint8_t cmd);

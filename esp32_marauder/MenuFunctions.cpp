@@ -2994,6 +2994,12 @@ void MenuFunctions::RunSetup()
   this->addNodes(&irMenu, text09, TFTLIGHTGREY, 0, [this]() {
     this->changeMenu(irMenu.parentMenu, true);
   });
+  this->addNodes(&irMenu, "TV-B-Gone (All TVs)", TFTRED, BEACON_SPAM, [this]() {
+    this->runTVBGone();
+  });
+  this->addNodes(&irMenu, "IR Jammer (Attack)", TFTMAGENTA, BEACON_SPAM, [this]() {
+    this->runIrJammer();
+  });
   this->addNodes(&irMenu, "Window Lights (1-8)", TFTYELLOW, GENERAL_APPS, [this]() {
     this->changeMenu(&irFairyMenu, true);
   });
@@ -3003,7 +3009,7 @@ void MenuFunctions::RunSetup()
   this->addNodes(&irMenu, "Panasonic TV", TFTCYAN, GENERAL_APPS, [this]() {
     this->changeMenu(&irTvMenu, true);
   });
-  this->addNodes(&irMenu, "IR 3s Loop (Test)", TFTMAGENTA, BEACON_SPAM, [this]() {
+  this->addNodes(&irMenu, "IR 3s Loop (Test)", TFTCYAN, BEACON_SPAM, [this]() {
     this->changeMenu(&irLoopMenu, true);
   });
   this->addNodes(&irMenu, "IR Blink & Log Test", TFTORANGE, BEACON_SPAM, [this]() {
@@ -7978,8 +7984,132 @@ void MenuFunctions::runIrBlinkTest() {
     delay(10);
   }
 
-  // Cleanup: ensure pin 16 is LOW on exit
+  // Cleanup: ensure pin is LOW on exit
   digitalWrite(pin, LOW);
+  display_obj.init();
+  this->changeMenu(current_menu, true);
+}
+
+void MenuFunctions::runTVBGone() {
+  display_obj.clearScreen();
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  display_obj.tft.setTextWrap(false);
+
+  // Header
+  display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_RED);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_RED);
+  display_obj.tft.drawCentreString("TV-B-GONE UNIVERSAL", SCREEN_WIDTH / 2, 4, 2);
+
+  // Exit banner
+  display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display_obj.tft.drawCentreString("Press BOOT (IO 0) to Stop", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+
+  while (digitalRead(0) == LOW) delay(10);
+
+  uint32_t tStart = millis();
+
+  auto progressCb = [&](uint16_t current, uint16_t total, const char* name) -> bool {
+    if (digitalRead(0) == LOW) {
+      while (digitalRead(0) == LOW) delay(10);
+      return false;
+    }
+
+    uint16_t barW = SCREEN_WIDTH - 40;
+    uint16_t barH = 18;
+    uint16_t barX = 20;
+    uint16_t barY = 56;
+    display_obj.tft.drawRect(barX, barY, barW, barH, TFT_WHITE);
+    uint16_t fillW = (barW - 4) * current / total;
+    display_obj.tft.fillRect(barX + 2, barY + 2, fillW, barH - 4, TFT_RED);
+    display_obj.tft.fillRect(barX + 2 + fillW, barY + 2, (barW - 4) - fillW, barH - 4, TFT_BLACK);
+
+    display_obj.tft.fillRect(0, 26, SCREEN_WIDTH, 26, TFT_BLACK);
+    display_obj.tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    String status = "Sending: " + String(name);
+    display_obj.tft.drawCentreString(status, SCREEN_WIDTH / 2, 28, 2);
+
+    display_obj.tft.fillRect(0, 78, SCREEN_WIDTH, 40, TFT_BLACK);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    String pct = String(current) + " / " + String(total) + " (" + String(current * 100 / total) + "%)";
+    display_obj.tft.drawCentreString(pct, SCREEN_WIDTH / 2, 82, 1);
+
+    String pinStr = "Pin: GPIO " + String(ir_blaster_obj.getPin()) + " | Time: " + String((millis() - tStart)/1000) + "s";
+    display_obj.tft.drawCentreString(pinStr, SCREEN_WIDTH / 2, 98, 1);
+
+    return true;
+  };
+
+  bool completed = ir_blaster_obj.runTVBGoneBatch(0, progressCb);
+
+  display_obj.tft.fillRect(0, 120, SCREEN_WIDTH, 24, TFT_BLACK);
+  if (completed) {
+    display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    display_obj.tft.drawCentreString("ALL CODES TRANSMITTED!", SCREEN_WIDTH / 2, 124, 2);
+  } else {
+    display_obj.tft.setTextColor(TFT_RED, TFT_BLACK);
+    display_obj.tft.drawCentreString("STOPPED BY USER", SCREEN_WIDTH / 2, 124, 2);
+  }
+  delay(1200);
+
+  display_obj.init();
+  this->changeMenu(current_menu, true);
+}
+
+void MenuFunctions::runIrJammer() {
+  display_obj.clearScreen();
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  display_obj.tft.setTextWrap(false);
+
+  // Header
+  display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_MAGENTA);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_MAGENTA);
+  display_obj.tft.drawCentreString("IR JAMMER (ATTACK)", SCREEN_WIDTH / 2, 4, 2);
+
+  // Exit banner
+  display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+  display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display_obj.tft.drawCentreString("Press BOOT (IO 0) to Stop", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+
+  while (digitalRead(0) == LOW) delay(10);
+
+  uint32_t jamCount = 0;
+  uint32_t lastUI = millis();
+  bool blink = false;
+  uint8_t mode = 2;
+
+  while (true) {
+    if (digitalRead(0) == LOW) {
+      while (digitalRead(0) == LOW) delay(10);
+      break;
+    }
+
+    ir_blaster_obj.sendJamBurst(mode);
+    jamCount++;
+
+    uint32_t now = millis();
+    if (now - lastUI >= 150) {
+      lastUI = now;
+      blink = !blink;
+
+      uint16_t boxColor = blink ? TFT_RED : TFT_MAGENTA;
+      display_obj.tft.fillRect(10, 26, SCREEN_WIDTH - 20, 44, boxColor);
+      display_obj.tft.drawRect(10, 26, SCREEN_WIDTH - 20, 44, TFT_WHITE);
+      display_obj.tft.setTextColor(TFT_WHITE, boxColor);
+      display_obj.tft.drawCentreString("JAMMING ACTIVE", SCREEN_WIDTH / 2, 32, 2);
+      display_obj.tft.drawCentreString("Multi-Frequency Sweep (36-56 kHz)", SCREEN_WIDTH / 2, 52, 1);
+
+      display_obj.tft.fillRect(0, 76, SCREEN_WIDTH, 60, TFT_BLACK);
+      display_obj.tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+      display_obj.tft.drawCentreString("Packets Flooded: " + String(jamCount), SCREEN_WIDTH / 2, 82, 2);
+
+      display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      display_obj.tft.drawCentreString("TX Pin: GPIO " + String(ir_blaster_obj.getPin()), SCREEN_WIDTH / 2, 104, 1);
+      display_obj.tft.drawCentreString("Blocking nearby remotes...", SCREEN_WIDTH / 2, 118, 1);
+    }
+  }
+
+  digitalWrite(ir_blaster_obj.getPin(), LOW);
   display_obj.init();
   this->changeMenu(current_menu, true);
 }

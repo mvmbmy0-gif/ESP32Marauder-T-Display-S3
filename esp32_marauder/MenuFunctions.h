@@ -237,6 +237,8 @@ class MenuFunctions
       Menu irLedMenu;
       Menu irLoopMenu;
       void runIrBlinkTest();
+      void runTVBGone();
+      void runIrJammer();
     #endif
 
     // Device menu stuff

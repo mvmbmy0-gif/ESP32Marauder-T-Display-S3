@@ -1,6 +1,16 @@
 #include "IRBlaster.h"
+#include "WORLD_IR_CODES.h"
 
 IRBlaster ir_blaster_obj;
+
+extern const IrCode *const NApowerCodes[];
+extern const uint8_t num_NAcodes;
+extern const IrCode *const EUpowerCodes[];
+extern const uint8_t num_EUcodes;
+extern const IrCode *const UniversalParsedCodes[];
+extern const uint8_t num_UniversalParsedCodes;
+extern const RawIrCode *const UniversalRawCodes[];
+extern const uint8_t num_UniversalRawCodes;
 
 IRBlaster::IRBlaster() {
   pin = IR_TX_PIN;
@@ -52,6 +62,167 @@ void IRBlaster::space(uint32_t duration_us) {
   if (duration_us > 0) {
     delayMicroseconds(duration_us);
   }
+}
+
+void IRBlaster::setPin(uint8_t new_pin) {
+  if (new_pin == pin && initialized) return;
+  if (initialized) {
+    ledcDetachPin(pin);
+    pinMode(pin, INPUT);
+  }
+  pin = new_pin;
+  begin(pin, channel);
+}
+
+void IRBlaster::sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz) {
+  if (!initialized) begin();
+  if (!buf || len == 0) return;
+  setFrequency(freq_hz > 0 ? freq_hz : 38000);
+  for (uint16_t i = 0; i < len; i++) {
+    if ((i % 2) == 0) {
+      mark(buf[i]);
+    } else {
+      space(buf[i]);
+    }
+  }
+  space(0);
+}
+
+void IRBlaster::sendParsedCode(const struct IrCode *code) {
+  if (!initialized) begin();
+  if (!code) return;
+  uint16_t rawData[300];
+  const uint8_t freq_khz = code->timer_val;
+  const uint32_t freq_hz = (freq_khz > 0) ? (uint32_t)freq_khz * 1000 : 38000;
+  const uint8_t numpairs = code->numpairs;
+  const uint8_t bitcompression = code->bitcompression;
+
+  uint16_t code_ptr = 0;
+  uint8_t bits_r = 0;
+  uint8_t bitsleft_r = 0;
+
+  auto read_bits = [&](uint8_t count) -> uint8_t {
+    uint8_t tmp = 0;
+    while (count) {
+      if (bitsleft_r == 0) {
+        bits_r = code->codes[code_ptr++];
+        bitsleft_r = 8;
+      }
+      bitsleft_r--;
+      tmp = (tmp << 1) | ((bits_r >> bitsleft_r) & 1);
+      count--;
+    }
+    return tmp;
+  };
+
+  for (uint8_t k = 0; k < numpairs; k++) {
+    uint16_t ti = (read_bits(bitcompression)) * 2;
+    rawData[k * 2] = code->times[ti] * 10;
+    rawData[(k * 2) + 1] = code->times[ti + 1] * 10;
+  }
+
+  sendRaw(rawData, numpairs * 2, freq_hz);
+}
+
+void IRBlaster::sendRawCode(const struct RawIrCode *code) {
+  if (!initialized) begin();
+  if (!code) return;
+  uint16_t rawData[300];
+  const uint8_t freq_khz = code->timer_val;
+  const uint32_t freq_hz = (freq_khz > 0) ? (uint32_t)freq_khz * 1000 : 38000;
+  const uint8_t numpairs = code->numpairs;
+
+  for (uint8_t k = 0; k < numpairs; k++) {
+    rawData[k * 2] = (uint16_t)(code->times[k * 2]);
+    rawData[(k * 2) + 1] = (uint16_t)(code->times[(k * 2) + 1]);
+  }
+
+  sendRaw(rawData, numpairs * 2, freq_hz);
+}
+
+bool IRBlaster::runTVBGoneBatch(uint8_t batch_type, std::function<bool(uint16_t current, uint16_t total, const char* name)> progressCb) {
+  uint16_t total = 0;
+  if (batch_type == 0) {
+    total = num_UniversalParsedCodes + num_UniversalRawCodes;
+  } else if (batch_type == 1) {
+    total = num_EUcodes + num_UniversalParsedCodes;
+  } else {
+    total = num_NAcodes + num_UniversalParsedCodes;
+  }
+
+  uint16_t current = 0;
+
+  if (batch_type == 0) {
+    for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
+      current++;
+      if (progressCb && !progressCb(current, total, "Universal Parsed")) return false;
+      sendParsedCode(UniversalParsedCodes[i]);
+      delay(25);
+    }
+    for (uint8_t i = 0; i < num_UniversalRawCodes; i++) {
+      current++;
+      if (progressCb && !progressCb(current, total, "Universal Raw")) return false;
+      sendRawCode(UniversalRawCodes[i]);
+      delay(25);
+    }
+  } else if (batch_type == 1) {
+    for (uint8_t i = 0; i < num_EUcodes; i++) {
+      current++;
+      if (progressCb && !progressCb(current, total, "EU Region")) return false;
+      sendParsedCode(EUpowerCodes[i]);
+      delay(25);
+    }
+    for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
+      current++;
+      if (progressCb && !progressCb(current, total, "Universal")) return false;
+      sendParsedCode(UniversalParsedCodes[i]);
+      delay(25);
+    }
+  } else {
+    for (uint8_t i = 0; i < num_NAcodes; i++) {
+      current++;
+      if (progressCb && !progressCb(current, total, "NA Region")) return false;
+      sendParsedCode(NApowerCodes[i]);
+      delay(25);
+    }
+    for (uint8_t i = 0; i < num_UniversalParsedCodes; i++) {
+      current++;
+      if (progressCb && !progressCb(current, total, "Universal")) return false;
+      sendParsedCode(UniversalParsedCodes[i]);
+      delay(25);
+    }
+  }
+  return true;
+}
+
+void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
+  if (!initialized) begin();
+  setFrequency(freq_hz > 0 ? freq_hz : 38000);
+  switch (mode) {
+    case 0:
+      for (int i = 0; i < 60; i++) {
+        mark(12);
+        space(12);
+      }
+      break;
+    case 1:
+      for (int i = 0; i < 40; i++) {
+        mark(random(10, 30));
+        space(random(10, 50));
+      }
+      break;
+    case 2:
+      setFrequency(36000);
+      for (int i = 0; i < 15; i++) { mark(14); space(14); }
+      setFrequency(38000);
+      for (int i = 0; i < 15; i++) { mark(13); space(13); }
+      setFrequency(40000);
+      for (int i = 0; i < 15; i++) { mark(12); space(12); }
+      setFrequency(56000);
+      for (int i = 0; i < 15; i++) { mark(9); space(9); }
+      break;
+  }
+  space(0);
 }
 
 // NEC Protocol (32-bit MSB-to-LSB grouped into bytes, each byte sent LSB-first)
