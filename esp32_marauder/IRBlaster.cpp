@@ -841,6 +841,8 @@ bool IRBlaster::loadRemote(const String &nameOrPath, CustomRemote &remote) {
       }
       curBtn.name = val;
       inBtn = true;
+    } else if (key.equalsIgnoreCase("pinned")) {
+      curBtn.pinned = (val.equalsIgnoreCase("true") || val == "1");
     } else if (key.equalsIgnoreCase("type")) {
       curBtn.type = val;
     } else if (key.equalsIgnoreCase("protocol")) {
@@ -888,6 +890,9 @@ bool IRBlaster::saveRemote(const CustomRemote &remote) {
 
   for (const auto &btn : remote.buttons) {
     file.println("name: " + btn.name);
+    if (btn.pinned) {
+      file.println("pinned: true");
+    }
     if (btn.type.equalsIgnoreCase("raw")) {
       file.println("type: raw");
       file.println("frequency: " + String(btn.frequency > 0 ? btn.frequency : 38000));

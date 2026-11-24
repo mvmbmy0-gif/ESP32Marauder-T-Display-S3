@@ -103,10 +103,11 @@ struct CustomIRButton {
   uint16_t bits;
   uint16_t frequency;
   std::vector<uint16_t> rawData;
+  bool pinned;
 
   CustomIRButton() : name(""), type("parsed"), protocol("NEC"),
                      address(0), command(0), value(0), bits(32),
-                     frequency(38000) {}
+                     frequency(38000), pinned(false) {}
 };
 
 struct CustomRemote {

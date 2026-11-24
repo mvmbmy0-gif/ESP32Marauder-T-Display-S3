@@ -2984,6 +2984,7 @@ void MenuFunctions::RunSetup()
   irManageMenu.list = new LinkedList<MenuNode>();
   irSubRemoteMenu.list = new LinkedList<MenuNode>();
   irDeleteRemoteMenu.list = new LinkedList<MenuNode>();
+  irPinMenu.list = new LinkedList<MenuNode>();
 
   irMenu.name = "IR Remote";
   irTvBGoneMenu.name = "TV-B-Gone";
@@ -2997,6 +2998,7 @@ void MenuFunctions::RunSetup()
   irManageMenu.name = "Manage Remotes";
   irSubRemoteMenu.name = "Remote";
   irDeleteRemoteMenu.name = "Delete Remote";
+  irPinMenu.name = "Pin Keys";
 
   irMenu.parentMenu = &mainMenu;
   irTvBGoneMenu.parentMenu = &irMenu;
@@ -3006,6 +3008,7 @@ void MenuFunctions::RunSetup()
   irManageMenu.parentMenu = &irCustomMenu;
   irSubRemoteMenu.parentMenu = &irCustomMenu;
   irDeleteRemoteMenu.parentMenu = &irManageMenu;
+  irPinMenu.parentMenu = &irSubRemoteMenu;
 
   irTvMenu.parentMenu = &irCustomMenu;
   irFairyMenu.parentMenu = &irCustomMenu;
@@ -8319,6 +8322,10 @@ void MenuFunctions::buildIrSubRemoteMenu(const String &remoteFile) {
   this->addNodes(&irSubRemoteMenu, "[+ Add Key to Remote]", TFTGREEN, GENERAL_APPS, [this, remoteFile]() {
     this->runAddKeyWizard(remoteFile);
   });
+  this->addNodes(&irSubRemoteMenu, "[* Pin/Unpin Keys]", TFTORANGE, GENERAL_APPS, [this, remoteFile]() {
+    this->buildIrPinMenu(remoteFile);
+    this->changeMenu(&irPinMenu, true);
+  });
   this->addNodes(&irSubRemoteMenu, "[Spam All Keys]", TFTYELLOW, BEACON_SPAM, [this, remoteFile]() {
     CustomRemote r;
     if (ir_blaster_obj.loadRemote(remoteFile, r)) {
@@ -8341,18 +8348,74 @@ void MenuFunctions::buildIrSubRemoteMenu(const String &remoteFile) {
   if (rem.buttons.empty()) {
     this->addNodes(&irSubRemoteMenu, "(No keys recorded)", TFTLIGHTGREY, 0, []() {});
   } else {
+    // 1. Render Pinned Keys first (with [*] prefix and highlighted TFTYELLOW)
     for (size_t i = 0; i < rem.buttons.size(); i++) {
       CustomIRButton b = rem.buttons[i];
-      this->addNodes(&irSubRemoteMenu, b.name.c_str(), TFTCYAN, 0, [this, b]() {
-        ir_blaster_obj.sendCustomButton(b);
-        display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
-        display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-        display_obj.tft.drawCentreString("SENT: " + b.name, SCREEN_WIDTH / 2, 142, 1);
-        delay(200);
-        display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
-        this->drawStatusBar();
-      });
+      if (b.pinned) {
+        String disp = "[*] " + b.name;
+        this->addNodes(&irSubRemoteMenu, disp.c_str(), TFTYELLOW, 0, [this, b]() {
+          ir_blaster_obj.sendCustomButton(b);
+          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
+          display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+          display_obj.tft.drawCentreString("SENT: " + b.name, SCREEN_WIDTH / 2, 142, 1);
+          delay(200);
+          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
+          this->drawStatusBar();
+        });
+      }
     }
+    // 2. Render Unpinned Keys
+    for (size_t i = 0; i < rem.buttons.size(); i++) {
+      CustomIRButton b = rem.buttons[i];
+      if (!b.pinned) {
+        this->addNodes(&irSubRemoteMenu, b.name.c_str(), TFTCYAN, 0, [this, b]() {
+          ir_blaster_obj.sendCustomButton(b);
+          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_DARKGREEN);
+          display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+          display_obj.tft.drawCentreString("SENT: " + b.name, SCREEN_WIDTH / 2, 142, 1);
+          delay(200);
+          display_obj.tft.fillRect(0, 140, SCREEN_WIDTH, 16, TFT_BLACK);
+          this->drawStatusBar();
+        });
+      }
+    }
+  }
+}
+
+void MenuFunctions::buildIrPinMenu(const String &remoteFile) {
+  if (irPinMenu.list != nullptr) {
+    irPinMenu.list->clear();
+  } else {
+    irPinMenu.list = new LinkedList<MenuNode>();
+  }
+  irPinMenu.parentMenu = &irSubRemoteMenu;
+  irPinMenu.name = "Pin/Unpin Keys";
+
+  this->addNodes(&irPinMenu, text09, TFTLIGHTGREY, 0, [this, remoteFile]() {
+    this->buildIrSubRemoteMenu(remoteFile);
+    this->changeMenu(irPinMenu.parentMenu, true);
+  });
+
+  CustomRemote rem;
+  if (!ir_blaster_obj.loadRemote(remoteFile, rem) || rem.buttons.empty()) {
+    this->addNodes(&irPinMenu, "(No keys to pin)", TFTLIGHTGREY, 0, []() {});
+    return;
+  }
+
+  for (size_t i = 0; i < rem.buttons.size(); i++) {
+    CustomIRButton b = rem.buttons[i];
+    String label = (b.pinned ? "[* PINNED] " : "[   ] ") + b.name;
+    uint16_t col = b.pinned ? TFTYELLOW : TFTWHITE;
+    this->addNodes(&irPinMenu, label.c_str(), col, 0, [this, remoteFile, i]() {
+      CustomRemote r;
+      if (ir_blaster_obj.loadRemote(remoteFile, r) && i < r.buttons.size()) {
+        r.buttons[i].pinned = !r.buttons[i].pinned;
+        ir_blaster_obj.saveRemote(r);
+        this->buildIrPinMenu(remoteFile);
+        this->buildIrSubRemoteMenu(remoteFile);
+        this->displayCurrentMenu();
+      }
+    });
   }
 }
 
@@ -8477,6 +8540,204 @@ void MenuFunctions::selectRemoteToAddKey() {
   this->runAddKeyWizard(list[sel]);
 }
 
+String MenuFunctions::promptKeyName(const String &contextTitle, const String &defaultKey) {
+  const char *categories[] = {
+    "[> Type Name (Keyboard) <]",
+    "[Garlands / 8-Mode]",
+    "[LED Strip / Colors]",
+    "[Lamp / Lighting]",
+    "[Climate / Fan / AC]",
+    "[TV / Navigation]",
+    "[Media / Audio]",
+    "[Digits 0-9]",
+    "[Generic / Extra]"
+  };
+  const size_t numCat = sizeof(categories) / sizeof(categories[0]);
+  int selCat = 0;
+
+  display_obj.clearScreen();
+
+  auto drawCatSelect = [&]() {
+    display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
+    display_obj.tft.drawCentreString(contextTitle, SCREEN_WIDTH / 2, 4, 2);
+
+    for (size_t i = 0; i < 4; i++) {
+      int idx = (selCat + i) % numCat;
+      int y = 28 + i * 24;
+      uint16_t bg = (i == 0) ? TFT_GREEN : TFT_BLACK;
+      uint16_t fg = (i == 0) ? TFT_BLACK : TFT_WHITE;
+      display_obj.tft.fillRect(10, y, SCREEN_WIDTH - 20, 22, bg);
+      display_obj.tft.setTextColor(fg, bg);
+      display_obj.tft.drawString(categories[idx], 20, y + 3, 2);
+    }
+    display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  };
+
+  drawCatSelect();
+  while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
+
+  bool picked = false;
+  uint32_t u_ms = 0;
+  bool u_held = false;
+  uint32_t d_ms = 0;
+  bool d_held = false;
+
+  while (!picked) {
+    if (digitalRead(14) == LOW) {
+      if (u_ms == 0) {
+        u_ms = millis();
+        u_held = false;
+      } else if (!u_held && (millis() - u_ms >= 400)) {
+        u_held = true;
+        return ""; // Back / Cancel
+      }
+    } else {
+      if (u_ms != 0) {
+        if (!u_held && (millis() - u_ms < 400)) {
+          selCat = (selCat > 0) ? selCat - 1 : numCat - 1;
+          drawCatSelect();
+        }
+        u_ms = 0;
+        u_held = false;
+      }
+    }
+
+    if (digitalRead(0) == LOW) {
+      if (d_ms == 0) {
+        d_ms = millis();
+        d_held = false;
+      } else if (!d_held && (millis() - d_ms >= 400)) {
+        d_held = true;
+        picked = true;
+      }
+    } else {
+      if (d_ms != 0) {
+        if (!d_held && (millis() - d_ms < 400)) {
+          selCat = (selCat + 1) % numCat;
+          drawCatSelect();
+        }
+        d_ms = 0;
+        d_held = false;
+      }
+    }
+    delay(10);
+  }
+
+  // Option 0: Type with Keyboard
+  if (selCat == 0) {
+    char kbuf[32];
+    strncpy(kbuf, defaultKey.c_str(), sizeof(kbuf) - 1);
+    kbuf[sizeof(kbuf) - 1] = '\0';
+    bool ok = this->textInput(kbuf, sizeof(kbuf), "Button Name:");
+    display_obj.init();
+    display_obj.tft.setTextDatum(TL_DATUM);
+    if (ok) {
+      String res = String(kbuf);
+      res.trim();
+      return res;
+    }
+    return "";
+  }
+
+  // Category sub-keys list:
+  std::vector<const char *> keys;
+  if (selCat == 1) { // Garlands / 8-Mode
+    keys = {"Power ON", "Power OFF", "1: Combination", "2: In Waves", "3: Sequential", "4: Slo-Glo", "5: Chasing", "6: Slow Fade", "7: Twinkle", "8: Steady On", "Brightness+", "Brightness-", "Timer (6h)"};
+  } else if (selCat == 2) { // LED Strip / Colors
+    keys = {"Power ON", "Power OFF", "Auto Effect", "Speed+", "Speed-", "Mode+", "Mode-", "Brightness+", "Brightness-", "Red", "Green", "Blue", "White", "Flash", "Strobe", "Fade", "Smooth"};
+  } else if (selCat == 3) { // Lamp / Lighting
+    keys = {"Power ON", "Power OFF", "Warm Light", "Cold Light", "Night Light", "Brightness+", "Brightness-", "Mode 1", "Mode 2", "Mode 3"};
+  } else if (selCat == 4) { // Climate / Fan / AC
+    keys = {"Power", "Temp+", "Temp-", "Mode", "Fan Speed", "Swing", "Turbo", "Eco", "Timer", "Natural", "Sleep"};
+  } else if (selCat == 5) { // TV / Navigation
+    keys = {"Power", "Volume+", "Volume-", "Mute", "Channel+", "Channel-", "Input / AV", "OK", "Back", "Menu", "Home", "Exit", "Up", "Down", "Left", "Right"};
+  } else if (selCat == 6) { // Media / Audio
+    keys = {"Play", "Pause", "Stop", "Rewind", "Fast Fwd", "Prev Track", "Next Track", "Bass+", "Bass-", "Bluetooth", "Optical", "AUX"};
+  } else if (selCat == 7) { // Digits 0-9
+    keys = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+  } else { // Generic / Extra
+    keys = {"Key_1", "Key_2", "Key_3", "Key_4", "Key_5", "Key_6", "Key_7", "Key_8", "Custom_A", "Custom_B", "Custom_C"};
+  }
+
+  int selSub = 0;
+  int numSub = (int)keys.size();
+  display_obj.clearScreen();
+
+  auto drawSubSelect = [&]() {
+    display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_NAVY);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
+    display_obj.tft.drawCentreString(categories[selCat], SCREEN_WIDTH / 2, 4, 2);
+
+    for (int i = 0; i < 4; i++) {
+      int idx = (selSub + i) % numSub;
+      int y = 28 + i * 24;
+      uint16_t bg = (i == 0) ? TFT_GREEN : TFT_BLACK;
+      uint16_t fg = (i == 0) ? TFT_BLACK : TFT_WHITE;
+      display_obj.tft.fillRect(10, y, SCREEN_WIDTH - 20, 22, bg);
+      display_obj.tft.setTextColor(fg, bg);
+      display_obj.tft.drawString(keys[idx], 20, y + 3, 2);
+    }
+    display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  };
+
+  drawSubSelect();
+  while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
+
+  bool pickedSub = false;
+  u_ms = 0;
+  u_held = false;
+  d_ms = 0;
+  d_held = false;
+
+  while (!pickedSub) {
+    if (digitalRead(14) == LOW) {
+      if (u_ms == 0) {
+        u_ms = millis();
+        u_held = false;
+      } else if (!u_held && (millis() - u_ms >= 400)) {
+        u_held = true;
+        return ""; // Back to category
+      }
+    } else {
+      if (u_ms != 0) {
+        if (!u_held && (millis() - u_ms < 400)) {
+          selSub = (selSub > 0) ? selSub - 1 : numSub - 1;
+          drawSubSelect();
+        }
+        u_ms = 0;
+        u_held = false;
+      }
+    }
+
+    if (digitalRead(0) == LOW) {
+      if (d_ms == 0) {
+        d_ms = millis();
+        d_held = false;
+      } else if (!d_held && (millis() - d_ms >= 400)) {
+        d_held = true;
+        pickedSub = true;
+      }
+    } else {
+      if (d_ms != 0) {
+        if (!d_held && (millis() - d_ms < 400)) {
+          selSub = (selSub + 1) % numSub;
+          drawSubSelect();
+        }
+        d_ms = 0;
+        d_held = false;
+      }
+    }
+    delay(10);
+  }
+
+  return String(keys[selSub]);
+}
+
 void MenuFunctions::runLearnRemoteWizard() {
   display_obj.clearScreen();
   display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -8495,7 +8756,7 @@ void MenuFunctions::runLearnRemoteWizard() {
     {"Audio Soundbar", {"POWER", "VOL+", "VOL-", "MUTE", "BLUETOOTH", "OPTICAL", "AUX", "BASS+", "BASS-", "PLAY/PAUSE"}},
     {"Fan Cooler", {"POWER", "SPEED+", "SPEED-", "SWING", "TIMER", "MODE", "NATURAL", "SLEEP"}},
     {"Projector", {"POWER", "INPUT", "FOCUS+", "FOCUS-", "KEYSTONE", "MENU", "OK", "BACK", "VOL+", "VOL-"}},
-    {"Custom Remote", {"KEY_1", "KEY_2", "KEY_3", "KEY_4", "KEY_5", "KEY_6", "KEY_7", "KEY_8"}}
+    {"Custom Remote", {}} // Fully dynamic unlimited buttons!
   };
   const size_t numTemplates = sizeof(templates) / sizeof(templates[0]);
   int selTpl = 0;
@@ -8573,14 +8834,25 @@ void MenuFunctions::runLearnRemoteWizard() {
     delay(10);
   }
 
-  std::vector<String> keys;
-  for (auto k : templates[selTpl].keys) {
-    keys.push_back(k);
+  // KEYBOARD INPUT FOR REMOTE NAME (user can customize name like "Kuriant_8_Mod")
+  char rNameBuf[32];
+  String defName = templates[selTpl].name;
+  defName.replace(" ", "_");
+  strncpy(rNameBuf, defName.c_str(), sizeof(rNameBuf) - 1);
+  rNameBuf[sizeof(rNameBuf) - 1] = '\0';
+
+  if (this->textInput(rNameBuf, sizeof(rNameBuf), "Remote Name:")) {
+    String entered = String(rNameBuf);
+    entered.trim();
+    if (entered.length() > 0) {
+      defName = entered;
+    }
   }
-  String remoteName = templates[selTpl].name;
+  display_obj.init();
+  display_obj.tft.setTextDatum(TL_DATUM);
 
   CustomRemote newRem;
-  String baseName = remoteName;
+  String baseName = defName;
   baseName.replace(" ", "_");
   String finalName = baseName;
   int counter = 1;
@@ -8590,120 +8862,109 @@ void MenuFunctions::runLearnRemoteWizard() {
   newRem.name = finalName;
   newRem.filename = finalName + ".ir";
 
+  std::vector<String> keys;
+  for (auto k : templates[selTpl].keys) {
+    keys.push_back(k);
+  }
+
   ir_blaster_obj.startIRReceiver();
 
-  bool finishAll = false;
-  size_t k = 0;
-  int extraKeyIdx = 1;
+  // If Custom Remote (keys is empty) -> fully dynamic user key entry!
+  if (keys.empty()) {
+    bool addingCustom = true;
+    while (addingCustom) {
+      String keyName = this->promptKeyName("LEARN: " + newRem.name, "Key_" + String(newRem.buttons.size() + 1));
+      if (keyName.length() == 0) {
+        break; // Cancelled
+      }
 
-  while (!finishAll) {
-    String currentKeyName = "";
-    if (k < keys.size()) {
-      currentKeyName = keys[k];
-    } else {
-      currentKeyName = "EXTRA_" + String(extraKeyIdx);
-    }
+      display_obj.clearScreen();
+      display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_NAVY);
+      display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
+      display_obj.tft.drawCentreString("LEARN: " + newRem.name, SCREEN_WIDTH / 2, 4, 2);
 
-    display_obj.clearScreen();
-    display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_NAVY);
-    display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
-    display_obj.tft.drawCentreString("LEARN: " + newRem.name, SCREEN_WIDTH / 2, 4, 2);
+      display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      display_obj.tft.drawCentreString("Key #" + String(newRem.buttons.size() + 1), SCREEN_WIDTH / 2, 30, 1);
 
-    display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    if (k < keys.size()) {
-      display_obj.tft.drawCentreString("Key " + String(k + 1) + " of " + String(keys.size()), SCREEN_WIDTH / 2, 30, 1);
-    } else {
-      display_obj.tft.drawCentreString("Extra Key #" + String(extraKeyIdx), SCREEN_WIDTH / 2, 30, 1);
-    }
+      display_obj.tft.fillRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_DARKCYAN);
+      display_obj.tft.drawRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_WHITE);
+      display_obj.tft.setTextColor(TFT_YELLOW, TFT_DARKCYAN);
+      display_obj.tft.drawCentreString("PRESS: " + keyName, SCREEN_WIDTH / 2, 56, 2);
 
-    display_obj.tft.fillRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_DARKCYAN);
-    display_obj.tft.drawRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_WHITE);
-    display_obj.tft.setTextColor(TFT_YELLOW, TFT_DARKCYAN);
-    display_obj.tft.drawCentreString("PRESS: " + currentKeyName, SCREEN_WIDTH / 2, 56, 2);
+      display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      display_obj.tft.drawCentreString("Point remote at RX (GPIO " + String(ir_blaster_obj.getRxPin()) + ")", SCREEN_WIDTH / 2, 92, 1);
 
-    display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
-    display_obj.tft.drawCentreString("Point remote at RX (GPIO " + String(ir_blaster_obj.getRxPin()) + ")", SCREEN_WIDTH / 2, 92, 1);
+      display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+      display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+      display_obj.tft.drawCentreString("14: Cancel | 0 Hold: Save & Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
-    display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
-    display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("14: Skip (Hold: Exit) | 0 Hold: Save", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+      ir_blaster_obj.resumeIR();
+      bool captured = false;
+      bool cancel = false;
 
-    ir_blaster_obj.resumeIR();
-    bool captured = false;
-    bool skip = false;
-
-    while (!captured && !skip && !finishAll) {
-      decode_results res;
-      if (ir_blaster_obj.decodeIR(&res)) {
-        if (res.decode_type == decode_type_t::UNKNOWN && res.rawlen < 4) {
-          ir_blaster_obj.resumeIR();
-        } else {
-          CustomIRButton btn;
-          btn.name = currentKeyName;
-          if (res.decode_type == decode_type_t::UNKNOWN) {
-            btn.type = "raw";
-            btn.protocol = "RAW";
-            btn.frequency = 38000;
-            uint16_t *rawarray = resultToRawArray(&res);
-            uint16_t rawlen = getCorrectedRawLength(&res);
-            for (uint16_t r = 0; r < rawlen; r++) {
-              btn.rawData.push_back(rawarray[r]);
-            }
-            delete[] rawarray;
+      while (!captured && !cancel) {
+        decode_results res;
+        if (ir_blaster_obj.decodeIR(&res)) {
+          if (res.decode_type == decode_type_t::UNKNOWN && res.rawlen < 4) {
+            ir_blaster_obj.resumeIR();
           } else {
-            btn.type = "parsed";
-            btn.protocol = typeToString(res.decode_type, res.repeat);
-            btn.address = res.address;
-            btn.command = res.command;
-            btn.value = res.value;
-            btn.bits = res.bits;
+            CustomIRButton btn;
+            btn.name = keyName;
+            if (res.decode_type == decode_type_t::UNKNOWN) {
+              btn.type = "raw";
+              btn.protocol = "RAW";
+              btn.frequency = 38000;
+              uint16_t *rawarray = resultToRawArray(&res);
+              uint16_t rawlen = getCorrectedRawLength(&res);
+              for (uint16_t r = 0; r < rawlen; r++) {
+                btn.rawData.push_back(rawarray[r]);
+              }
+              delete[] rawarray;
+            } else {
+              btn.type = "parsed";
+              btn.protocol = typeToString(res.decode_type, res.repeat);
+              btn.address = res.address;
+              btn.command = res.command;
+              btn.value = res.value;
+              btn.bits = res.bits;
+            }
+            newRem.buttons.push_back(btn);
+            captured = true;
+
+            display_obj.tft.fillRect(10, 110, SCREEN_WIDTH - 20, 32, TFT_DARKGREEN);
+            display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+            display_obj.tft.drawCentreString("CAPTURED: " + btn.name + " (" + btn.protocol + ")", SCREEN_WIDTH / 2, 118, 1);
+            delay(600);
           }
-          newRem.buttons.push_back(btn);
-          captured = true;
-
-          display_obj.tft.fillRect(10, 110, SCREEN_WIDTH - 20, 32, TFT_DARKGREEN);
-          display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-          display_obj.tft.drawCentreString("CAPTURED: " + btn.name + " (" + btn.protocol + ")", SCREEN_WIDTH / 2, 118, 1);
-          delay(600);
         }
+
+        if (digitalRead(14) == LOW) {
+          while (digitalRead(14) == LOW) delay(10);
+          cancel = true;
+        }
+
+        if (digitalRead(0) == LOW) {
+          uint32_t t0 = millis();
+          while (digitalRead(0) == LOW) delay(10);
+          if (millis() - t0 >= 400) {
+            addingCustom = false;
+            cancel = true;
+          }
+        }
+        delay(10);
+        yield();
       }
 
-      if (digitalRead(14) == LOW) {
-        uint32_t t0 = millis();
-        while (digitalRead(14) == LOW) delay(10);
-        if (millis() - t0 >= 400) {
-          finishAll = true;
-        } else {
-          skip = true;
-        }
-      }
-
-      if (digitalRead(0) == LOW) {
-        uint32_t t0 = millis();
-        while (digitalRead(0) == LOW) delay(10);
-        if (millis() - t0 >= 400) {
-          finishAll = true;
-        }
-      }
-      delay(10);
-      yield();
-    }
-
-    if (finishAll) break;
-
-    if (k < keys.size()) {
-      k++;
-      if (k == keys.size()) {
-        // Template keys ended. Ask user if they want to add extra keys!
+      if (captured) {
         display_obj.clearScreen();
         display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
         display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
-        display_obj.tft.drawCentreString("TEMPLATE FINISHED!", SCREEN_WIDTH / 2, 4, 2);
+        display_obj.tft.drawCentreString("KEY SAVED!", SCREEN_WIDTH / 2, 4, 2);
 
         display_obj.tft.fillRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_DARKGREEN);
         display_obj.tft.drawRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_WHITE);
         display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-        display_obj.tft.drawCentreString("0: + LEARN EXTRA KEYS", SCREEN_WIDTH / 2, 48, 2);
+        display_obj.tft.drawCentreString("0: + ADD ANOTHER KEY", SCREEN_WIDTH / 2, 48, 2);
 
         display_obj.tft.fillRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_NAVY);
         display_obj.tft.drawRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_WHITE);
@@ -8711,22 +8972,160 @@ void MenuFunctions::runLearnRemoteWizard() {
         display_obj.tft.drawCentreString("14: SAVE & FINISH", SCREEN_WIDTH / 2, 94, 2);
 
         while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
-        bool choiceMade = false;
-        while (!choiceMade) {
+        bool choice = false;
+        while (!choice) {
           if (digitalRead(0) == LOW) {
             while (digitalRead(0) == LOW) delay(10);
-            choiceMade = true;
-            // continue in extra key mode
+            choice = true;
+            addingCustom = true;
           } else if (digitalRead(14) == LOW) {
             while (digitalRead(14) == LOW) delay(10);
-            choiceMade = true;
-            finishAll = true;
+            choice = true;
+            addingCustom = false;
           }
           delay(10);
         }
       }
-    } else {
-      extraKeyIdx++;
+    }
+  } else {
+    // Template keys loop
+    bool finishAll = false;
+    size_t k = 0;
+
+    while (!finishAll) {
+      String currentKeyName = "";
+      if (k < keys.size()) {
+        currentKeyName = keys[k];
+      } else {
+        // Extra key learning: prompt user for key name!
+        currentKeyName = this->promptKeyName("EXTRA KEY NAME:", "Key_" + String(newRem.buttons.size() + 1));
+        if (currentKeyName.length() == 0) {
+          break; // User canceled extra keys
+        }
+      }
+
+      display_obj.clearScreen();
+      display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_NAVY);
+      display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
+      display_obj.tft.drawCentreString("LEARN: " + newRem.name, SCREEN_WIDTH / 2, 4, 2);
+
+      display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      if (k < keys.size()) {
+        display_obj.tft.drawCentreString("Key " + String(k + 1) + " of " + String(keys.size()), SCREEN_WIDTH / 2, 30, 1);
+      } else {
+        display_obj.tft.drawCentreString("Extra Key #" + String(newRem.buttons.size() + 1), SCREEN_WIDTH / 2, 30, 1);
+      }
+
+      display_obj.tft.fillRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_DARKCYAN);
+      display_obj.tft.drawRect(20, 48, SCREEN_WIDTH - 40, 36, TFT_WHITE);
+      display_obj.tft.setTextColor(TFT_YELLOW, TFT_DARKCYAN);
+      display_obj.tft.drawCentreString("PRESS: " + currentKeyName, SCREEN_WIDTH / 2, 56, 2);
+
+      display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      display_obj.tft.drawCentreString("Point remote at RX (GPIO " + String(ir_blaster_obj.getRxPin()) + ")", SCREEN_WIDTH / 2, 92, 1);
+
+      display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
+      display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+      display_obj.tft.drawCentreString("14: Skip (Hold: Exit) | 0 Hold: Save", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+
+      ir_blaster_obj.resumeIR();
+      bool captured = false;
+      bool skip = false;
+
+      while (!captured && !skip && !finishAll) {
+        decode_results res;
+        if (ir_blaster_obj.decodeIR(&res)) {
+          if (res.decode_type == decode_type_t::UNKNOWN && res.rawlen < 4) {
+            ir_blaster_obj.resumeIR();
+          } else {
+            CustomIRButton btn;
+            btn.name = currentKeyName;
+            if (res.decode_type == decode_type_t::UNKNOWN) {
+              btn.type = "raw";
+              btn.protocol = "RAW";
+              btn.frequency = 38000;
+              uint16_t *rawarray = resultToRawArray(&res);
+              uint16_t rawlen = getCorrectedRawLength(&res);
+              for (uint16_t r = 0; r < rawlen; r++) {
+                btn.rawData.push_back(rawarray[r]);
+              }
+              delete[] rawarray;
+            } else {
+              btn.type = "parsed";
+              btn.protocol = typeToString(res.decode_type, res.repeat);
+              btn.address = res.address;
+              btn.command = res.command;
+              btn.value = res.value;
+              btn.bits = res.bits;
+            }
+            newRem.buttons.push_back(btn);
+            captured = true;
+
+            display_obj.tft.fillRect(10, 110, SCREEN_WIDTH - 20, 32, TFT_DARKGREEN);
+            display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+            display_obj.tft.drawCentreString("CAPTURED: " + btn.name + " (" + btn.protocol + ")", SCREEN_WIDTH / 2, 118, 1);
+            delay(600);
+          }
+        }
+
+        if (digitalRead(14) == LOW) {
+          uint32_t t0 = millis();
+          while (digitalRead(14) == LOW) delay(10);
+          if (millis() - t0 >= 400) {
+            finishAll = true;
+          } else {
+            skip = true;
+          }
+        }
+
+        if (digitalRead(0) == LOW) {
+          uint32_t t0 = millis();
+          while (digitalRead(0) == LOW) delay(10);
+          if (millis() - t0 >= 400) {
+            finishAll = true;
+          }
+        }
+        delay(10);
+        yield();
+      }
+
+      if (finishAll) break;
+
+      if (k < keys.size()) {
+        k++;
+        if (k == keys.size()) {
+          // Template keys ended. Ask user if they want to add extra keys!
+          display_obj.clearScreen();
+          display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
+          display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
+          display_obj.tft.drawCentreString("TEMPLATE FINISHED!", SCREEN_WIDTH / 2, 4, 2);
+
+          display_obj.tft.fillRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_DARKGREEN);
+          display_obj.tft.drawRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_WHITE);
+          display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+          display_obj.tft.drawCentreString("0: + LEARN EXTRA KEYS", SCREEN_WIDTH / 2, 48, 2);
+
+          display_obj.tft.fillRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_NAVY);
+          display_obj.tft.drawRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_WHITE);
+          display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
+          display_obj.tft.drawCentreString("14: SAVE & FINISH", SCREEN_WIDTH / 2, 94, 2);
+
+          while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
+          bool choiceMade = false;
+          while (!choiceMade) {
+            if (digitalRead(0) == LOW) {
+              while (digitalRead(0) == LOW) delay(10);
+              choiceMade = true;
+              // continue in extra key mode
+            } else if (digitalRead(14) == LOW) {
+              while (digitalRead(14) == LOW) delay(10);
+              choiceMade = true;
+              finishAll = true;
+            }
+            delay(10);
+          }
+        }
+      }
     }
   }
 
@@ -8749,111 +9148,15 @@ void MenuFunctions::runLearnRemoteWizard() {
 }
 
 void MenuFunctions::runAddKeyWizard(const String &remoteFile) {
-  const char *candidateNames[] = {
-    // Power & Basics
-    "POWER", "POWER_ON", "POWER_OFF", "MUTE", "INFO",
-    // Volume & Channel
-    "VOL+", "VOL-", "CH+", "CH-", "PREV_CH",
-    // Navigation
-    "UP", "DOWN", "LEFT", "RIGHT", "OK", "BACK", "MENU", "HOME", "EXIT",
-    // Media Playback
-    "PLAY", "PAUSE", "STOP", "REWIND", "FAST_FWD", "RECORD",
-    // Digits
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-    // Source & Inputs
-    "INPUT", "TV/AV", "HDMI_1", "HDMI_2", "BLUETOOTH", "USB",
-    // Lights & Garlands Modes
-    "LIGHT_ON", "LIGHT_OFF", "BRIGHT+", "BRIGHT-", "SPEED+", "SPEED-",
-    "MODE_1", "MODE_2", "MODE_3", "MODE_4", "MODE_5", "MODE_6", "MODE_7", "MODE_8",
-    "MODE+", "MODE-", "TIMER", "AUTO",
-    // Colors & Light Effects
-    "RED", "GREEN", "BLUE", "WHITE", "WARM", "COLD", "YELLOW", "CYAN", "PURPLE",
-    "FLASH", "STROBE", "FADE", "SMOOTH",
-    // Climate & Fan
-    "TEMP+", "TEMP-", "FAN_SPEED", "SWING", "ECO", "TURBO",
-    // Custom Generic
-    "CUSTOM_A", "CUSTOM_B", "CUSTOM_C", "KEY_EXTRA"
-  };
-  const size_t numCandidate = sizeof(candidateNames) / sizeof(candidateNames[0]);
-  int selKey = 0;
-
   bool addAnother = true;
   while (addAnother) {
-    display_obj.clearScreen();
-    auto drawKeySelect = [&]() {
-      display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_BLUE);
-      display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
-      String title = "ADD KEY: " + remoteFile;
-      if (title.endsWith(".ir")) title = title.substring(0, title.length() - 3);
-      display_obj.tft.drawCentreString(title, SCREEN_WIDTH / 2, 4, 2);
+    String disp = remoteFile;
+    if (disp.endsWith(".ir")) disp = disp.substring(0, disp.length() - 3);
 
-      for (size_t i = 0; i < 4; i++) {
-        int idx = (selKey + i) % numCandidate;
-        int y = 28 + i * 24;
-        uint16_t bg = (i == 0) ? TFT_GREEN : TFT_BLACK;
-        uint16_t fg = (i == 0) ? TFT_BLACK : TFT_WHITE;
-        display_obj.tft.fillRect(10, y, SCREEN_WIDTH - 20, 22, bg);
-        display_obj.tft.setTextColor(fg, bg);
-        display_obj.tft.drawString(candidateNames[idx], 20, y + 3, 2);
-      }
-      display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
-      display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-      display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
-    };
-
-    drawKeySelect();
-    while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
-
-    bool picked = false;
-    uint32_t u_ms = 0;
-    bool u_held = false;
-    uint32_t d_ms = 0;
-    bool d_held = false;
-
-    while (!picked) {
-      if (digitalRead(14) == LOW) {
-        if (u_ms == 0) {
-          u_ms = millis();
-          u_held = false;
-        } else if (!u_held && (millis() - u_ms >= 400)) {
-          u_held = true;
-          display_obj.init();
-          this->changeMenu(current_menu, true);
-          return;
-        }
-      } else {
-        if (u_ms != 0) {
-          if (!u_held && (millis() - u_ms < 400)) {
-            selKey = (selKey > 0) ? selKey - 1 : numCandidate - 1;
-            drawKeySelect();
-          }
-          u_ms = 0;
-          u_held = false;
-        }
-      }
-
-      if (digitalRead(0) == LOW) {
-        if (d_ms == 0) {
-          d_ms = millis();
-          d_held = false;
-        } else if (!d_held && (millis() - d_ms >= 400)) {
-          d_held = true;
-          picked = true;
-        }
-      } else {
-        if (d_ms != 0) {
-          if (!d_held && (millis() - d_ms < 400)) {
-            selKey = (selKey + 1) % numCandidate;
-            drawKeySelect();
-          }
-          d_ms = 0;
-          d_held = false;
-        }
-      }
-      delay(10);
+    String keyName = this->promptKeyName("ADD KEY TO " + disp);
+    if (keyName.length() == 0) {
+      break;
     }
-
-    String keyName = candidateNames[selKey];
 
     display_obj.clearScreen();
     display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 22, TFT_NAVY);

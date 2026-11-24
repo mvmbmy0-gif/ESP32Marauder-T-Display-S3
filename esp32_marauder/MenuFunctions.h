@@ -243,6 +243,7 @@ class MenuFunctions
       Menu irManageMenu;
       Menu irSubRemoteMenu;
       Menu irDeleteRemoteMenu;
+      Menu irPinMenu;
       void runIrBlinkTest();
       void runTVBGone(uint8_t batch_type = 0);
       void runIrJammer(uint8_t mode = 2);
@@ -252,7 +253,9 @@ class MenuFunctions
       void buildIrManageMenu();
       void buildIrSubRemoteMenu(const String &remoteFile);
       void buildIrDeleteRemoteMenu();
+      void buildIrPinMenu(const String &remoteFile);
       void selectRemoteToAddKey();
+      String promptKeyName(const String &contextTitle, const String &defaultKey = "");
       void runLearnRemoteWizard();
       void runAddKeyWizard(const String &remoteFile);
     #endif
