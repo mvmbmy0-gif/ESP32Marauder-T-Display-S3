@@ -2254,11 +2254,11 @@ bool MenuFunctions::textInput(char *buffer, size_t bufLen, const char *title)
     display_obj.tft.setTextDatum(MC_DATUM);
     display_obj.tft.drawString(title ? title : "Enter Text", SCREEN_WIDTH / 2, 10, 2);
 
-    // Help banner at bottom (y = 155 to 170)
-    display_obj.tft.fillRect(0, 155, SCREEN_WIDTH, 15, TFT_BLACK);
+    // Help banner at bottom (y = 152 to 170)
+    display_obj.tft.fillRect(0, 152, SCREEN_WIDTH, 18, TFT_BLACK);
     display_obj.tft.setTextColor(TFT_ORANGE, TFT_BLACK);
     display_obj.tft.setTextDatum(MC_DATUM);
-    display_obj.tft.drawString("UP: Row | DOWN: Char | Hold DOWN: Type | Hold UP: BS", SCREEN_WIDTH / 2, 162, 1);
+    display_obj.tft.drawString("UP: Row (Hold:BS) | DOWN: Char (Hold:OK)", SCREEN_WIDTH / 2, 161, 1);
 
     drawBuffer();
     drawGrid();
