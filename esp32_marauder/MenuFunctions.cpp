@@ -8222,6 +8222,12 @@ void MenuFunctions::buildIrConfigMenu() {
     this->buildIrConfigMenu();
     this->changeMenu(&irConfigMenu, true);
   });
+  String invText = "TX Invert: " + String(ir_blaster_obj.getInverted() ? "ON (Act-LOW)" : "OFF (Act-HIGH)");
+  this->addNodes(&irConfigMenu, invText.c_str(), TFTMAGENTA, 0, [this]() {
+    ir_blaster_obj.cycleInverted();
+    this->buildIrConfigMenu();
+    this->changeMenu(&irConfigMenu, true);
+  });
 }
 
 void MenuFunctions::buildIrCustomMenu() {

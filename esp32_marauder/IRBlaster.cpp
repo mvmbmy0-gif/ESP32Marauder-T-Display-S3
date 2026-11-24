@@ -56,6 +56,7 @@ IRBlaster::IRBlaster() {
   channel = IR_LEDC_CHANNEL;
   tx_repeats = 1;
   jammer_mode = 2; // SWEEP default
+  tx_inverted = false;
   initialized = false;
   irsend = nullptr;
   irrecv = nullptr;
@@ -101,6 +102,7 @@ void IRBlaster::loadSettings() {
     }
     tx_repeats = prefs.getUChar("repeats", 1);
     jammer_mode = prefs.getUChar("jam_mode", 2);
+    tx_inverted = prefs.getBool("tx_inv", true);
     if (needsSave) {
       prefs.putUChar("tx_pin", pin);
       prefs.putUChar("rx_pin", rx_pin);
@@ -111,6 +113,7 @@ void IRBlaster::loadSettings() {
     rx_pin = 16;
     tx_repeats = 1;
     jammer_mode = 2;
+    tx_inverted = true;
     saveSettings();
   }
 }
@@ -122,6 +125,7 @@ void IRBlaster::saveSettings() {
     prefs.putUChar("rx_pin", rx_pin);
     prefs.putUChar("repeats", tx_repeats);
     prefs.putUChar("jam_mode", jammer_mode);
+    prefs.putBool("tx_inv", tx_inverted);
     prefs.end();
   }
 }
@@ -134,7 +138,7 @@ void IRBlaster::begin(uint8_t tx_pin, uint8_t ledc_ch) {
   channel = ledc_ch;
 
   pinMode(pin, OUTPUT);
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
 
   gpio_reset_pin((gpio_num_t)rx_pin);
   pinMode(rx_pin, INPUT_PULLUP);
@@ -142,8 +146,9 @@ void IRBlaster::begin(uint8_t tx_pin, uint8_t ledc_ch) {
   if (irsend) {
     delete irsend;
   }
-  irsend = new IRsend(pin);
+  irsend = new IRsend(pin, tx_inverted);
   irsend->begin();
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
 
   if (irrecv) {
     if (is_receiving) {
@@ -165,15 +170,32 @@ void IRBlaster::setPin(uint8_t new_pin) {
   if (new_pin == pin && initialized) return;
   pin = new_pin;
   pinMode(pin, OUTPUT);
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
 
   if (irsend) {
     delete irsend;
   }
-  irsend = new IRsend(pin);
+  irsend = new IRsend(pin, tx_inverted);
   irsend->begin();
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
 
   saveSettings();
+}
+
+void IRBlaster::setInverted(bool inv) {
+  tx_inverted = inv;
+  if (irsend) {
+    delete irsend;
+  }
+  irsend = new IRsend(pin, tx_inverted);
+  irsend->begin();
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
+  saveSettings();
+}
+
+void IRBlaster::cycleInverted() {
+  setInverted(!tx_inverted);
 }
 
 void IRBlaster::cycleTxPin() {
@@ -325,7 +347,7 @@ void IRBlaster::sendDecodedResult(const decode_results *result) {
     if (r < tx_repeats) delay(40);
   }
 
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
   if (wasListening && irrecv) {
     irrecv->enableIRIn(true);
     is_receiving = true;
@@ -343,7 +365,7 @@ void IRBlaster::sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz) {
   }
 
   irsend->sendRaw(buf, len, freq_hz > 0 ? (uint16_t)(freq_hz / 1000 * 1000) : 38000);
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
 
   if (wasListening && irrecv) {
     irrecv->enableIRIn(true);
@@ -417,7 +439,7 @@ void IRBlaster::sendNEC32(uint32_t data, uint8_t repeats) {
     if (r < total_repeats) delay(40);
   }
 
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
   if (wasListening && irrecv) {
     irrecv->enableIRIn(true);
     is_receiving = true;
@@ -443,7 +465,7 @@ void IRBlaster::sendPanasonic48(uint64_t data) {
     if (r < tx_repeats) delay(40);
   }
 
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
   if (wasListening && irrecv) {
     irrecv->enableIRIn(true);
     is_receiving = true;
@@ -528,9 +550,9 @@ void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
   switch (mode) {
     case 0: // Basic 38k
       for (int i = 0; i < 70; i++) {
-        digitalWrite(pin, HIGH);
+        digitalWrite(pin, tx_inverted ? LOW : HIGH);
         delayMicroseconds(half_period);
-        digitalWrite(pin, LOW);
+        digitalWrite(pin, tx_inverted ? HIGH : LOW);
         delayMicroseconds(half_period);
       }
       delayMicroseconds(200);
@@ -538,9 +560,9 @@ void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
     case 1: // Random Jitter
       for (int i = 0; i < 50; i++) {
         uint32_t hp = random(8, 25);
-        digitalWrite(pin, HIGH);
+        digitalWrite(pin, tx_inverted ? LOW : HIGH);
         delayMicroseconds(hp);
-        digitalWrite(pin, LOW);
+        digitalWrite(pin, tx_inverted ? HIGH : LOW);
         delayMicroseconds(hp);
       }
       break;
@@ -549,15 +571,15 @@ void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
       for (int f = 0; f < 4; f++) {
         uint32_t hp = (1000000 / freqs[f]) / 2;
         for (int i = 0; i < 20; i++) {
-          digitalWrite(pin, HIGH);
+          digitalWrite(pin, tx_inverted ? LOW : HIGH);
           delayMicroseconds(hp);
-          digitalWrite(pin, LOW);
+          digitalWrite(pin, tx_inverted ? HIGH : LOW);
           delayMicroseconds(hp);
         }
       }
       break;
   }
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
   if (wasListening && irrecv) {
     irrecv->enableIRIn(true);
     is_receiving = true;
@@ -870,7 +892,7 @@ void IRBlaster::sendCustomButton(const CustomIRButton &btn) {
     if (r < tx_repeats) delay(40);
   }
 
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, tx_inverted ? HIGH : LOW);
   if (wasListening && irrecv) {
     irrecv->enableIRIn(true);
     is_receiving = true;

@@ -122,6 +122,7 @@ class IRBlaster {
     uint8_t channel;
     uint8_t tx_repeats;
     uint8_t jammer_mode;
+    bool tx_inverted;
     bool initialized;
 
     IRsend *irsend;
@@ -168,6 +169,10 @@ class IRBlaster {
     uint8_t getRepeats() const { return tx_repeats; }
     void setRepeats(uint8_t r);
     void cycleRepeats();
+
+    bool getInverted() const { return tx_inverted; }
+    void setInverted(bool inv);
+    void cycleInverted();
 
     uint8_t getJammerMode() const { return jammer_mode; }
     void setJammerMode(uint8_t m);
