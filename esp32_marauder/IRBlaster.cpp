@@ -284,7 +284,7 @@ void IRBlaster::resumeIR() {
 }
 
 bool IRBlaster::readIRSignal(String &proto, uint32_t &addr, uint32_t &cmd, uint32_t &raw, uint16_t &bits) {
-  if (!irrecv) startIRReceiver();
+  if (!irrecv || !is_receiving) startIRReceiver();
   decode_results results;
   if (!irrecv->decode(&results)) {
     return false;
@@ -307,8 +307,11 @@ void IRBlaster::sendDecodedResult(const decode_results *result) {
   if (!result) return;
   if (!initialized) begin();
 
-  bool wasListening = (irrecv != nullptr);
-  if (wasListening) irrecv->disableIRIn();
+  bool wasListening = (irrecv != nullptr && is_receiving);
+  if (wasListening) {
+    irrecv->disableIRIn();
+    is_receiving = false;
+  }
 
   for (uint8_t r = 0; r <= tx_repeats; r++) {
     if (result->decode_type == decode_type_t::UNKNOWN) {
@@ -323,20 +326,29 @@ void IRBlaster::sendDecodedResult(const decode_results *result) {
   }
 
   digitalWrite(pin, LOW);
-  if (wasListening) irrecv->enableIRIn(true);
+  if (wasListening && irrecv) {
+    irrecv->enableIRIn(true);
+    is_receiving = true;
+  }
 }
 
 void IRBlaster::sendRaw(const uint16_t *buf, uint16_t len, uint32_t freq_hz) {
   if (!initialized) begin();
   if (!buf || len == 0 || !irsend) return;
 
-  bool wasListening = (irrecv != nullptr);
-  if (wasListening) irrecv->disableIRIn();
+  bool wasListening = (irrecv != nullptr && is_receiving);
+  if (wasListening) {
+    irrecv->disableIRIn();
+    is_receiving = false;
+  }
 
   irsend->sendRaw(buf, len, freq_hz > 0 ? (uint16_t)(freq_hz / 1000 * 1000) : 38000);
   digitalWrite(pin, LOW);
 
-  if (wasListening) irrecv->enableIRIn(true);
+  if (wasListening && irrecv) {
+    irrecv->enableIRIn(true);
+    is_receiving = true;
+  }
 }
 
 void IRBlaster::sendParsedCode(const struct IrCode *code) {
@@ -393,8 +405,11 @@ void IRBlaster::sendRawCode(const struct RawIrCode *code) {
 
 void IRBlaster::sendNEC32(uint32_t data, uint8_t repeats) {
   if (!initialized) begin();
-  bool wasListening = is_receiving;
-  if (wasListening && irrecv) irrecv->disableIRIn();
+  bool wasListening = (irrecv != nullptr && is_receiving);
+  if (wasListening) {
+    irrecv->disableIRIn();
+    is_receiving = false;
+  }
 
   uint8_t total_repeats = (repeats > 0) ? repeats : tx_repeats;
   for (uint8_t r = 0; r <= total_repeats; r++) {
@@ -403,7 +418,10 @@ void IRBlaster::sendNEC32(uint32_t data, uint8_t repeats) {
   }
 
   digitalWrite(pin, LOW);
-  if (wasListening && irrecv) irrecv->enableIRIn(true);
+  if (wasListening && irrecv) {
+    irrecv->enableIRIn(true);
+    is_receiving = true;
+  }
 }
 
 void IRBlaster::sendNEC(uint16_t address, uint8_t command, uint8_t repeats) {
@@ -414,8 +432,11 @@ void IRBlaster::sendNEC(uint16_t address, uint8_t command, uint8_t repeats) {
 
 void IRBlaster::sendPanasonic48(uint64_t data) {
   if (!initialized) begin();
-  bool wasListening = is_receiving;
-  if (wasListening && irrecv) irrecv->disableIRIn();
+  bool wasListening = (irrecv != nullptr && is_receiving);
+  if (wasListening) {
+    irrecv->disableIRIn();
+    is_receiving = false;
+  }
 
   for (uint8_t r = 0; r <= tx_repeats; r++) {
     irsend->sendPanasonic64(data, 48);
@@ -423,7 +444,10 @@ void IRBlaster::sendPanasonic48(uint64_t data) {
   }
 
   digitalWrite(pin, LOW);
-  if (wasListening && irrecv) irrecv->enableIRIn(true);
+  if (wasListening && irrecv) {
+    irrecv->enableIRIn(true);
+    is_receiving = true;
+  }
 }
 
 void IRBlaster::sendPanasonic(uint16_t address, uint8_t device, uint8_t subdevice, uint8_t command) {
@@ -490,8 +514,11 @@ void IRBlaster::sendLEDStrip(LedStripCmd cmd) {
 
 void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
   if (!initialized) begin();
-  bool wasListening = (irrecv != nullptr);
-  if (wasListening) irrecv->disableIRIn();
+  bool wasListening = (irrecv != nullptr && is_receiving);
+  if (wasListening) {
+    irrecv->disableIRIn();
+    is_receiving = false;
+  }
 
   pinMode(pin, OUTPUT);
   uint32_t period_us = 1000000 / (freq_hz > 0 ? freq_hz : 38000);
@@ -531,7 +558,10 @@ void IRBlaster::sendJamBurst(uint8_t mode, uint32_t freq_hz) {
       break;
   }
   digitalWrite(pin, LOW);
-  if (wasListening) irrecv->enableIRIn();
+  if (wasListening && irrecv) {
+    irrecv->enableIRIn(true);
+    is_receiving = true;
+  }
 }
 
 bool IRBlaster::runTVBGoneBatch(uint8_t batch_type, std::function<bool(uint16_t current, uint16_t total, const char* name)> progressCb) {
@@ -590,24 +620,28 @@ bool IRBlaster::initFilesystem() {
 
 std::vector<String> IRBlaster::listCustomRemotes() {
   std::vector<String> list;
-  initFilesystem();
+  if (!initFilesystem()) return list;
 
   File root = SPIFFS.open("/");
   if (root) {
     File file = root.openNextFile();
     while (file) {
-      String fname = String(file.name());
-      if (fname.startsWith("/")) fname = fname.substring(1);
-      if (fname.startsWith("BruceIR/")) fname = fname.substring(8);
-      if (fname.endsWith(".ir")) {
-        bool dup = false;
-        for (const auto &item : list) {
-          if (item == fname) { dup = true; break; }
+      if (!file.isDirectory()) {
+        String fname = String(file.name());
+        if (fname.startsWith("/")) fname = fname.substring(1);
+        if (fname.startsWith("BruceIR/")) fname = fname.substring(8);
+        if (fname.endsWith(".ir")) {
+          bool dup = false;
+          for (const auto &item : list) {
+            if (item == fname) { dup = true; break; }
+          }
+          if (!dup) list.push_back(fname);
         }
-        if (!dup) list.push_back(fname);
       }
+      file.close();
       file = root.openNextFile();
     }
+    root.close();
   }
 
   return list;
@@ -776,8 +810,11 @@ bool IRBlaster::appendButtonToRemote(const String &remoteName, const CustomIRBut
 
 void IRBlaster::sendCustomButton(const CustomIRButton &btn) {
   if (!initialized) begin();
-  bool wasListening = is_receiving;
-  if (wasListening && irrecv) irrecv->disableIRIn();
+  bool wasListening = (irrecv != nullptr && is_receiving);
+  if (wasListening) {
+    irrecv->disableIRIn();
+    is_receiving = false;
+  }
 
   for (uint8_t r = 0; r <= tx_repeats; r++) {
     if (btn.type.equalsIgnoreCase("raw")) {
@@ -834,7 +871,10 @@ void IRBlaster::sendCustomButton(const CustomIRButton &btn) {
   }
 
   digitalWrite(pin, LOW);
-  if (wasListening && irrecv) irrecv->enableIRIn(true);
+  if (wasListening && irrecv) {
+    irrecv->enableIRIn(true);
+    is_receiving = true;
+  }
 }
 
 // -------------------------------------------------------------
