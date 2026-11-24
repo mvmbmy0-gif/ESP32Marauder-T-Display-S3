@@ -2092,72 +2092,175 @@ bool MenuFunctions::textInput(char *buffer, size_t bufLen, const char *title)
   #ifdef HAS_TOUCH
     return keyboardInput(buffer, bufLen, title);
   #elif defined(HAS_BUTTONS)
-    static const char* const CHAR_SET[] = {
-      "A","B","C","D","E","F","G","H","I","J","K","L","M",
-      "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
-      "a","b","c","d","e","f","g","h","i","j","k","l","m",
-      "n","o","p","q","r","s","t","u","v","w","x","y","z",
-      "0","1","2","3","4","5","6","7","8","9",
-      " ","_","-",".","!","@","#","$","%","&","*",
-      "<BS>", "<DONE>", "<CANCEL>"
+    bool caps = true;
+    int cur_row = 0;
+    int cur_col = 0;
+    int prev_row = -1;
+    int prev_col = -1;
+
+    // Row 0..2: Alphabet keys (9 per row)
+    const char* row0_upper[9] = {"A","B","C","D","E","F","G","H","I"};
+    const char* row0_lower[9] = {"a","b","c","d","e","f","g","h","i"};
+
+    const char* row1_upper[9] = {"J","K","L","M","N","O","P","Q","R"};
+    const char* row1_lower[9] = {"j","k","l","m","n","o","p","q","r"};
+
+    const char* row2_upper[9] = {"S","T","U","V","W","X","Y","Z","_"};
+    const char* row2_lower[9] = {"s","t","u","v","w","x","y","z","_"};
+
+    // Row 3: Digits & symbols (11 keys)
+    const char* row3[11] = {"0","1","2","3","4","5","6","7","8","9","-"};
+
+    // Row 4: Action keys (5 keys)
+    const char* row4[5] = {"a/A", "SPACE", "< BS", "OK", "EXIT"};
+
+    auto getNumCols = [](int r) -> int {
+      if (r < 3) return 9;
+      if (r == 3) return 11;
+      return 5;
     };
-    const int NUM_CHARS = sizeof(CHAR_SET) / sizeof(CHAR_SET[0]);
-    int char_idx = 0;
+
+    auto getKeyText = [&](int r, int c) -> const char* {
+      if (r == 0) return caps ? row0_upper[c] : row0_lower[c];
+      if (r == 1) return caps ? row1_upper[c] : row1_lower[c];
+      if (r == 2) return caps ? row2_upper[c] : row2_lower[c];
+      if (r == 3) return row3[c];
+      return row4[c];
+    };
+
+    auto getKeyRect = [&](int r, int c, int &x, int &y, int &w, int &h) {
+      h = 18;
+      y = 52 + r * 20;
+      if (r < 3) {
+        w = 30;
+        int totalW = 9 * 30 + 8 * 4; // 302
+        x = (SCREEN_WIDTH - totalW) / 2 + c * 34;
+      } else if (r == 3) {
+        w = 24;
+        int totalW = 11 * 24 + 10 * 3; // 294
+        x = (SCREEN_WIDTH - totalW) / 2 + c * 27;
+      } else { // Row 4 (Actions)
+        int widths[5] = {46, 68, 54, 54, 60};
+        int totalW = 46 + 68 + 54 + 54 + 60 + 4 * 6; // 306
+        int curX = (SCREEN_WIDTH - totalW) / 2;
+        for (int i = 0; i < c; i++) {
+          curX += widths[i] + 6;
+        }
+        x = curX;
+        w = widths[c];
+      }
+    };
+
+    auto drawBuffer = [&]() {
+      display_obj.tft.fillRoundRect(8, 23, SCREEN_WIDTH - 16, 26, 4, TFT_BLACK);
+      display_obj.tft.drawRoundRect(8, 23, SCREEN_WIDTH - 16, 26, 4, TFT_CYAN);
+      display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
+      display_obj.tft.setTextDatum(ML_DATUM);
+      String disp = String(buffer) + "_";
+      display_obj.tft.drawString(disp, 16, 36, 2);
+    };
+
+    auto drawSingleKey = [&](int r, int c, bool selected) {
+      int x, y, w, h;
+      getKeyRect(r, c, x, y, w, h);
+      const char* txt = getKeyText(r, c);
+
+      uint16_t bg = selected ? TFT_YELLOW : 0x2104;
+      uint16_t border = selected ? TFT_WHITE : 0x4208;
+      uint16_t fg = selected ? TFT_BLACK : TFT_WHITE;
+
+      if (r == 4 && !selected) {
+        if (c == 0) bg = 0x0013;      // [a/A] Dark blue
+        else if (c == 1) bg = 0x01E0; // [SPACE] Dark cyan
+        else if (c == 2) bg = 0x8000; // [< BS] Dark red
+        else if (c == 3) bg = 0x03E0; // [OK] Dark green
+        else if (c == 4) bg = 0x4208; // [EXIT] Dark grey
+      }
+
+      display_obj.tft.fillRoundRect(x, y, w, h, 3, bg);
+      display_obj.tft.drawRoundRect(x, y, w, h, 3, border);
+      display_obj.tft.setTextColor(fg, bg);
+      display_obj.tft.setTextDatum(MC_DATUM);
+      display_obj.tft.drawString(txt, x + w / 2, y + h / 2, (r < 4) ? 2 : 1);
+    };
+
+    auto drawGrid = [&]() {
+      for (int r = 0; r < 5; r++) {
+        int numC = getNumCols(r);
+        for (int c = 0; c < numC; c++) {
+          drawSingleKey(r, c, (r == cur_row && c == cur_col));
+        }
+      }
+      prev_row = cur_row;
+      prev_col = cur_col;
+    };
+
+    auto updateCursor = [&]() {
+      if (prev_row >= 0 && prev_col >= 0) {
+        drawSingleKey(prev_row, prev_col, false);
+      }
+      drawSingleKey(cur_row, cur_col, true);
+      prev_row = cur_row;
+      prev_col = cur_col;
+    };
+
+    auto activateKey = [&]() -> int {
+      // 0 = continue, 1 = ok/done, -1 = cancel
+      if (cur_row == 4) {
+        if (cur_col == 0) { // [a/A]
+          caps = !caps;
+          drawGrid();
+          return 0;
+        } else if (cur_col == 1) { // [SPACE]
+          size_t len = strlen(buffer);
+          if (len + 1 < bufLen) {
+            buffer[len] = '_';
+            buffer[len + 1] = '\0';
+            drawBuffer();
+          }
+          return 0;
+        } else if (cur_col == 2) { // [< BS]
+          size_t len = strlen(buffer);
+          if (len > 0) {
+            buffer[len - 1] = '\0';
+            drawBuffer();
+          }
+          return 0;
+        } else if (cur_col == 3) { // [OK]
+          return (strlen(buffer) > 0) ? 1 : 0;
+        } else if (cur_col == 4) { // [EXIT]
+          return -1;
+        }
+      } else {
+        const char *txt = getKeyText(cur_row, cur_col);
+        size_t len = strlen(buffer);
+        if (len + 1 < bufLen) {
+          buffer[len] = txt[0];
+          buffer[len + 1] = '\0';
+          drawBuffer();
+        }
+        return 0;
+      }
+      return 0;
+    };
 
     while (u_btn.isPressedNow() || d_btn.isPressedNow()) delay(10);
 
     display_obj.clearScreen();
     // Header
-    display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 24, 0x18E3);
-    display_obj.tft.setTextColor(TFT_WHITE, 0x18E3);
+    display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, 21, TFT_BLUE);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_BLUE);
     display_obj.tft.setTextDatum(MC_DATUM);
-    display_obj.tft.drawString(title ? title : "Enter Text", SCREEN_WIDTH / 2, 12, 2);
+    display_obj.tft.drawString(title ? title : "Enter Text", SCREEN_WIDTH / 2, 10, 2);
 
-    // Buffer box
-    display_obj.tft.drawRoundRect(6, 28, SCREEN_WIDTH - 12, 34, 4, TFT_CYAN);
-    display_obj.tft.fillRect(8, 30, SCREEN_WIDTH - 16, 30, TFT_BLACK);
-
-    // Help banner
+    // Help banner at bottom (y = 155 to 170)
+    display_obj.tft.fillRect(0, 155, SCREEN_WIDTH, 15, TFT_BLACK);
     display_obj.tft.setTextColor(TFT_ORANGE, TFT_BLACK);
     display_obj.tft.setTextDatum(MC_DATUM);
-    display_obj.tft.drawString("DN: Next | UP: Prev | Hold DN: Add | Hold UP: Done", SCREEN_WIDTH / 2, 70, 1);
-
-    auto drawBuffer = [&]() {
-      display_obj.tft.fillRect(10, 32, SCREEN_WIDTH - 20, 26, TFT_BLACK);
-      display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      display_obj.tft.setTextDatum(ML_DATUM);
-      String disp = String(buffer) + "_";
-      display_obj.tft.drawString(disp, 16, 45, 2);
-    };
-
-    auto drawCarousel = [&]() {
-      display_obj.tft.fillRect(0, 85, SCREEN_WIDTH, 80, TFT_BLACK);
-
-      const int cx = SCREEN_WIDTH / 2;
-      const int cy = 120;
-
-      display_obj.tft.fillRoundRect(cx - 36, cy - 18, 72, 36, 6, TFT_NAVY);
-      display_obj.tft.drawRoundRect(cx - 36, cy - 18, 72, 36, 6, TFT_YELLOW);
-      display_obj.tft.setTextColor(TFT_YELLOW, TFT_NAVY);
-      display_obj.tft.setTextDatum(MC_DATUM);
-      display_obj.tft.drawString(CHAR_SET[char_idx], cx, cy, (strlen(CHAR_SET[char_idx]) > 2) ? 2 : 4);
-
-      display_obj.tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      int offsets[] = {-64, -118};
-      for (int i = 0; i < 2; i++) {
-        int idx = (char_idx - (i + 1) + NUM_CHARS * 5) % NUM_CHARS;
-        display_obj.tft.drawString(CHAR_SET[idx], cx + offsets[i], cy, (strlen(CHAR_SET[idx]) > 2) ? 1 : 2);
-      }
-
-      int offsets_r[] = {64, 118};
-      for (int i = 0; i < 2; i++) {
-        int idx = (char_idx + (i + 1)) % NUM_CHARS;
-        display_obj.tft.drawString(CHAR_SET[idx], cx + offsets_r[i], cy, (strlen(CHAR_SET[idx]) > 2) ? 1 : 2);
-      }
-    };
+    display_obj.tft.drawString("IO14: Row | IO0: Char | Hold 0: Type | Hold 14: BS", SCREEN_WIDTH / 2, 162, 1);
 
     drawBuffer();
-    drawCarousel();
+    drawGrid();
 
     uint32_t u_press_t = 0;
     uint32_t d_press_t = 0;
@@ -2172,34 +2275,32 @@ bool MenuFunctions::textInput(char *buffer, size_t bufLen, const char *title)
           display_obj.dumpScreenBMP();
           continue;
         } else if (ser == "btn down") {
-          char_idx = (char_idx + 1) % NUM_CHARS;
-          drawCarousel();
+          int numC = getNumCols(cur_row);
+          cur_col = (cur_col + 1) % numC;
+          updateCursor();
           continue;
         } else if (ser == "btn up") {
-          char_idx = (char_idx > 0) ? char_idx - 1 : NUM_CHARS - 1;
-          drawCarousel();
+          cur_row = (cur_row + 1) % 5;
+          int numC = getNumCols(cur_row);
+          if (cur_col >= numC) cur_col = numC - 1;
+          updateCursor();
           continue;
         } else if (ser == "btn ok") {
-          if (strcmp(CHAR_SET[char_idx], "<BS>") == 0) {
-            size_t len = strlen(buffer);
-            if (len > 0) {
-              buffer[len - 1] = '\0';
-              drawBuffer();
-            }
-          } else if (strcmp(CHAR_SET[char_idx], "<DONE>") == 0) {
-            return (strlen(buffer) > 0);
-          } else if (strcmp(CHAR_SET[char_idx], "<CANCEL>") == 0) {
+          int res = activateKey();
+          if (res == 1) {
+            display_obj.init();
+            display_obj.tft.setTextDatum(TL_DATUM);
+            return true;
+          }
+          if (res == -1) {
+            display_obj.init();
+            display_obj.tft.setTextDatum(TL_DATUM);
             return false;
-          } else {
-            size_t len = strlen(buffer);
-            if (len + 1 < bufLen) {
-              buffer[len] = CHAR_SET[char_idx][0];
-              buffer[len + 1] = '\0';
-              drawBuffer();
-            }
           }
           continue;
         } else if (ser == "btn back" || ser == "btn exit") {
+          display_obj.init();
+          display_obj.tft.setTextDatum(TL_DATUM);
           return false;
         } else if (ser.startsWith("type ")) {
           String val = ser.substring(5);
@@ -2210,63 +2311,70 @@ bool MenuFunctions::textInput(char *buffer, size_t bufLen, const char *title)
         } else if (ser.length() > 0) {
           strncpy(buffer, ser.c_str(), bufLen - 1);
           buffer[bufLen - 1] = '\0';
+          display_obj.init();
+          display_obj.tft.setTextDatum(TL_DATUM);
           return true;
         }
       }
 
+      // TOP BUTTON (IO 14 / u_btn): Click = Next Row, Hold = Backspace / Cancel
       if (u_btn.isPressedNow()) {
         if (u_press_t == 0) {
           u_press_t = millis();
           u_handled = false;
-        } else if (!u_handled && (millis() - u_press_t >= 400)) {
+        } else if (!u_handled && (millis() - u_press_t >= 350)) {
           u_handled = true;
-          while (u_btn.isPressedNow()) delay(10);
-          return (strlen(buffer) > 0);
+          size_t len = strlen(buffer);
+          if (len > 0) {
+            buffer[len - 1] = '\0';
+            drawBuffer();
+          } else {
+            // Buffer already empty: holding top exits/cancels
+            while (u_btn.isPressedNow()) delay(10);
+            display_obj.init();
+            display_obj.tft.setTextDatum(TL_DATUM);
+            return false;
+          }
         }
       } else {
         if (u_press_t != 0) {
-          if (!u_handled && (millis() - u_press_t < 400)) {
-            char_idx = (char_idx > 0) ? char_idx - 1 : NUM_CHARS - 1;
-            drawCarousel();
+          if (!u_handled && (millis() - u_press_t < 350)) {
+            cur_row = (cur_row + 1) % 5;
+            int numC = getNumCols(cur_row);
+            if (cur_col >= numC) cur_col = numC - 1;
+            updateCursor();
           }
           u_press_t = 0;
           u_handled = false;
         }
       }
 
+      // BOTTOM BUTTON (IO 0 / d_btn / BOOT): Click = Next Char (+1 right), Hold = Type/Select
       if (d_btn.isPressedNow()) {
         if (d_press_t == 0) {
           d_press_t = millis();
           d_handled = false;
-        } else if (!d_handled && (millis() - d_press_t >= 400)) {
+        } else if (!d_handled && (millis() - d_press_t >= 350)) {
           d_handled = true;
-          if (strcmp(CHAR_SET[char_idx], "<BS>") == 0) {
-            size_t len = strlen(buffer);
-            if (len > 0) {
-              buffer[len - 1] = '\0';
-              drawBuffer();
-            }
-          } else if (strcmp(CHAR_SET[char_idx], "<DONE>") == 0) {
+          int res = activateKey();
+          if (res == 1) {
             while (d_btn.isPressedNow()) delay(10);
+            display_obj.init();
+            display_obj.tft.setTextDatum(TL_DATUM);
             return (strlen(buffer) > 0);
-          } else if (strcmp(CHAR_SET[char_idx], "<CANCEL>") == 0) {
+          } else if (res == -1) {
             while (d_btn.isPressedNow()) delay(10);
+            display_obj.init();
+            display_obj.tft.setTextDatum(TL_DATUM);
             return false;
-          } else {
-            size_t len = strlen(buffer);
-            if (len + 1 < bufLen) {
-              buffer[len] = CHAR_SET[char_idx][0];
-              buffer[len + 1] = '\0';
-              drawBuffer();
-            }
           }
-          while (d_btn.isPressedNow()) delay(10);
         }
       } else {
         if (d_press_t != 0) {
-          if (!d_handled && (millis() - d_press_t < 400)) {
-            char_idx = (char_idx + 1) % NUM_CHARS;
-            drawCarousel();
+          if (!d_handled && (millis() - d_press_t < 350)) {
+            int numC = getNumCols(cur_row);
+            cur_col = (cur_col + 1) % numC;
+            updateCursor();
           }
           d_press_t = 0;
           d_handled = false;
@@ -8495,6 +8603,25 @@ void MenuFunctions::selectRemoteToAddKey() {
   bool d_held = false;
 
   while (!picked) {
+    if (Serial.available()) {
+      String ser = Serial.readStringUntil('\n');
+      ser.trim();
+      if (ser == "btn down") {
+        sel = (sel + 1) % total;
+        drawPicker();
+      } else if (ser == "btn up") {
+        sel = (sel > 0) ? sel - 1 : total - 1;
+        drawPicker();
+      } else if (ser == "btn ok") {
+        picked = true;
+      } else if (ser == "btn back" || ser == "btn exit") {
+        display_obj.init();
+        this->changeMenu(current_menu, true);
+        return;
+      } else if (ser == "screen" || ser == "screenshot") {
+        display_obj.dumpScreenBMP();
+      }
+    }
     if (digitalRead(14) == LOW) {
       if (u_ms == 0) {
         u_ms = millis();
@@ -8586,6 +8713,25 @@ String MenuFunctions::promptKeyName(const String &contextTitle, const String &de
   bool d_held = false;
 
   while (!picked) {
+    if (Serial.available()) {
+      String ser = Serial.readStringUntil('\n');
+      ser.trim();
+      if (ser == "btn down") {
+        selCat = (selCat + 1) % numCat;
+        drawCatSelect();
+      } else if (ser == "btn up") {
+        selCat = (selCat > 0) ? selCat - 1 : numCat - 1;
+        drawCatSelect();
+      } else if (ser == "btn ok") {
+        picked = true;
+      } else if (ser == "btn back" || ser == "btn exit") {
+        display_obj.init();
+        this->changeMenu(current_menu, true);
+        return "";
+      } else if (ser == "screen" || ser == "screenshot") {
+        display_obj.dumpScreenBMP();
+      }
+    }
     if (digitalRead(14) == LOW) {
       if (u_ms == 0) {
         u_ms = millis();
@@ -8792,6 +8938,25 @@ void MenuFunctions::runLearnRemoteWizard() {
   bool d_held = false;
 
   while (!picked) {
+    if (Serial.available()) {
+      String ser = Serial.readStringUntil('\n');
+      ser.trim();
+      if (ser == "btn down") {
+        selTpl = (selTpl + 1) % numTemplates;
+        drawTplSelect();
+      } else if (ser == "btn up") {
+        selTpl = (selTpl > 0) ? selTpl - 1 : numTemplates - 1;
+        drawTplSelect();
+      } else if (ser == "btn ok") {
+        picked = true;
+      } else if (ser == "btn back" || ser == "btn exit") {
+        display_obj.init();
+        this->changeMenu(current_menu, true);
+        return;
+      } else if (ser == "screen" || ser == "screenshot") {
+        display_obj.dumpScreenBMP();
+      }
+    }
     if (digitalRead(14) == LOW) {
       if (u_ms == 0) {
         u_ms = millis();
