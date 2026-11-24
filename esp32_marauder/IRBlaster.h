@@ -196,6 +196,7 @@ class IRBlaster {
 
     // Custom Remotes Management (Bruce / Flipper IR files)
     bool initFilesystem();
+    void seedDefaultRemotes();
     std::vector<String> listCustomRemotes();
     bool loadRemote(const String &nameOrPath, CustomRemote &remote);
     bool saveRemote(const CustomRemote &remote);

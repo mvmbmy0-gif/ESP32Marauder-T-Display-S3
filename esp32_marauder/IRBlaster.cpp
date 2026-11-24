@@ -160,6 +160,7 @@ void IRBlaster::begin(uint8_t tx_pin, uint8_t ledc_ch) {
   is_receiving = false;
 
   initFilesystem();
+  seedDefaultRemotes();
 
   initialized = true;
   Serial.printf("[IR] Blaster initialized: TX GPIO %u, RX GPIO %u, Repeats %u\n",
@@ -638,6 +639,117 @@ bool IRBlaster::initFilesystem() {
     return SPIFFS.begin(true);
   }
   return true;
+}
+
+void IRBlaster::seedDefaultRemotes() {
+  if (!initFilesystem()) return;
+  Preferences prefs;
+  bool alreadySeeded = false;
+  if (prefs.begin("ir_cfg", false)) {
+    alreadySeeded = prefs.getBool("seeded_v2", false);
+    prefs.end();
+  }
+  if (alreadySeeded) return;
+
+  // 1. Panasonic TV
+  if (!SPIFFS.exists("/Panasonic_TV.ir")) {
+    CustomRemote pan;
+    pan.name = "Panasonic_TV";
+    pan.filename = "Panasonic_TV.ir";
+    auto addPan = [&](const char* name, uint64_t val) {
+      CustomIRButton b;
+      b.name = name;
+      b.type = "parsed";
+      b.protocol = "PANASONIC";
+      b.value = val;
+      b.bits = 48;
+      pan.buttons.push_back(b);
+    };
+    addPan("Power", 0x40040100BCBDULL);
+    addPan("Mute", 0x400401004C4DULL);
+    addPan("Volume+", 0x400401000405ULL);
+    addPan("Volume-", 0x400401008485ULL);
+    addPan("Channel+", 0x400401002C2DULL);
+    addPan("Channel-", 0x40040100ACADULL);
+    addPan("Input/AV", 0x40040100A0A1ULL);
+    addPan("OK", 0x400401009293ULL);
+    addPan("Menu", 0x400401007273ULL);
+    saveRemote(pan);
+  }
+
+  // 2. Window Lights (Curtain 8-mode Garland)
+  if (!SPIFFS.exists("/Window_Lights.ir")) {
+    CustomRemote wl;
+    wl.name = "Window_Lights";
+    wl.filename = "Window_Lights.ir";
+    auto addWL = [&](const char* name, uint8_t cmd) {
+      CustomIRButton b;
+      b.name = name;
+      b.type = "parsed";
+      b.protocol = "NEC";
+      b.address = 0x00FF;
+      b.command = cmd;
+      b.value = irsend ? irsend->encodeNEC(0x00FF, cmd) : 0;
+      b.bits = 32;
+      wl.buttons.push_back(b);
+    };
+    addWL("Power ON", 0x05);
+    addWL("Power OFF", 0x06);
+    addWL("1: Combination", 0x09);
+    addWL("2: In Waves", 0x0A);
+    addWL("3: Sequential", 0x0B);
+    addWL("4: Slo-Glo", 0x0C);
+    addWL("5: Chasing", 0x0D);
+    addWL("6: Slow Fade", 0x0E);
+    addWL("7: Twinkle", 0x0F);
+    addWL("8: Steady On", 0x10);
+    addWL("Brightness+", 0x07);
+    addWL("Brightness-", 0x08);
+    addWL("Timer (6h)", 0x11);
+    saveRemote(wl);
+  }
+
+  // 3. SP611E LED Strip
+  if (!SPIFFS.exists("/SP611E_LED.ir")) {
+    CustomRemote sp;
+    sp.name = "SP611E_LED";
+    sp.filename = "SP611E_LED.ir";
+    auto addSP = [&](const char* name, uint8_t cmd) {
+      CustomIRButton b;
+      b.name = name;
+      b.type = "parsed";
+      b.protocol = "NEC";
+      b.address = 0x00FF;
+      b.command = cmd;
+      b.value = irsend ? irsend->encodeNEC(0x00FF, cmd) : 0;
+      b.bits = 32;
+      sp.buttons.push_back(b);
+    };
+    addSP("Power ON", 0x02);
+    addSP("Power OFF", 0x03);
+    addSP("Auto Effect", 0x04);
+    addSP("Speed+", 0x05);
+    addSP("Speed-", 0x06);
+    addSP("Mode+", 0x07);
+    addSP("Mode-", 0x08);
+    addSP("Brightness+", 0x09);
+    addSP("Brightness-", 0x0A);
+    addSP("Music Mode", 0x0B);
+    addSP("Red", 0x10);
+    addSP("Green", 0x11);
+    addSP("Blue", 0x12);
+    addSP("White", 0x13);
+    addSP("Flash", 0x14);
+    addSP("Strobe", 0x0F);
+    addSP("Fade", 0x15);
+    addSP("Smooth", 0x16);
+    saveRemote(sp);
+  }
+
+  if (prefs.begin("ir_cfg", false)) {
+    prefs.putBool("seeded_v2", true);
+    prefs.end();
+  }
 }
 
 std::vector<String> IRBlaster::listCustomRemotes() {

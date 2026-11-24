@@ -252,6 +252,7 @@ class MenuFunctions
       void buildIrManageMenu();
       void buildIrSubRemoteMenu(const String &remoteFile);
       void buildIrDeleteRemoteMenu();
+      void selectRemoteToAddKey();
       void runLearnRemoteWizard();
       void runAddKeyWizard(const String &remoteFile);
     #endif
