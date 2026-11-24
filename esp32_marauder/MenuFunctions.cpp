@@ -2152,8 +2152,8 @@ bool MenuFunctions::textInput(char *buffer, size_t bufLen, const char *title)
     };
 
     auto drawBuffer = [&]() {
-      display_obj.tft.fillRoundRect(8, 23, SCREEN_WIDTH - 16, 26, 4, TFT_BLACK);
-      display_obj.tft.drawRoundRect(8, 23, SCREEN_WIDTH - 16, 26, 4, TFT_CYAN);
+      display_obj.tft.fillRoundRect(8, 23, SCREEN_WIDTH - 16, 26, 2, TFT_BLACK);
+      display_obj.tft.drawRoundRect(8, 23, SCREEN_WIDTH - 16, 26, 2, TFT_CYAN);
       display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
       display_obj.tft.setTextDatum(ML_DATUM);
       String disp = String(buffer) + "_";
@@ -2170,15 +2170,16 @@ bool MenuFunctions::textInput(char *buffer, size_t bufLen, const char *title)
       uint16_t fg = selected ? TFT_BLACK : TFT_WHITE;
 
       if (r == 4 && !selected) {
-        if (c == 0) bg = 0x0013;      // [a/A] Dark blue
-        else if (c == 1) bg = 0x01E0; // [SPACE] Dark cyan
-        else if (c == 2) bg = 0x8000; // [< BS] Dark red
-        else if (c == 3) bg = 0x03E0; // [OK] Dark green
-        else if (c == 4) bg = 0x4208; // [EXIT] Dark grey
+        if (c == 0) { bg = 0x0013; border = 0x021F; }      // [a/A] Dark blue
+        else if (c == 1) { bg = 0x01E0; border = 0x03E0; } // [SPACE] Dark cyan
+        else if (c == 2) { bg = 0xB800; border = TFT_RED; } // [< BS] Vibrant Red
+        else if (c == 3) { bg = 0x03E0; border = 0x07E0; } // [OK] Dark green
+        else if (c == 4) { bg = 0x39E7; border = 0x5ACB; } // [EXIT] Dark grey
       }
 
-      display_obj.tft.fillRoundRect(x, y, w, h, 3, bg);
-      display_obj.tft.drawRoundRect(x, y, w, h, 3, border);
+      // Micro-rounded squares (r=2) for clean, sharp tech aesthetic
+      display_obj.tft.fillRoundRect(x, y, w, h, 2, bg);
+      display_obj.tft.drawRoundRect(x, y, w, h, 2, border);
       display_obj.tft.setTextColor(fg, bg);
       display_obj.tft.setTextDatum(MC_DATUM);
       display_obj.tft.drawString(txt, x + w / 2, y + h / 2, (r < 4) ? 2 : 1);
