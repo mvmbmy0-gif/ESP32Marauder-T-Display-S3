@@ -2258,7 +2258,7 @@ bool MenuFunctions::textInput(char *buffer, size_t bufLen, const char *title)
     display_obj.tft.fillRect(0, 155, SCREEN_WIDTH, 15, TFT_BLACK);
     display_obj.tft.setTextColor(TFT_ORANGE, TFT_BLACK);
     display_obj.tft.setTextDatum(MC_DATUM);
-    display_obj.tft.drawString("IO14: Row | IO0: Char | Hold 0: Type | Hold 14: BS", SCREEN_WIDTH / 2, 162, 1);
+    display_obj.tft.drawString("UP: Row | DOWN: Char | Hold DOWN: Type | Hold UP: BS", SCREEN_WIDTH / 2, 162, 1);
 
     drawBuffer();
     drawGrid();
@@ -8591,7 +8591,7 @@ void MenuFunctions::selectRemoteToAddKey() {
     }
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("UP: Prev/Back | DOWN: Next/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
   };
 
   drawPicker();
@@ -8701,7 +8701,7 @@ String MenuFunctions::promptKeyName(const String &contextTitle, const String &de
     }
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("UP: Prev/Back | DOWN: Next/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
   };
 
   drawCatSelect();
@@ -8829,7 +8829,7 @@ String MenuFunctions::promptKeyName(const String &contextTitle, const String &de
     }
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("UP: Prev/Back | DOWN: Next/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
   };
 
   drawSubSelect();
@@ -8925,7 +8925,7 @@ void MenuFunctions::runLearnRemoteWizard() {
 
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("14: UP/Back | 0: DOWN/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("UP: Prev/Back | DOWN: Next/OK", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
   };
 
   drawTplSelect();
@@ -9062,7 +9062,7 @@ void MenuFunctions::runLearnRemoteWizard() {
 
       display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
       display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-      display_obj.tft.drawCentreString("14: Cancel | 0 Hold: Save & Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+      display_obj.tft.drawCentreString("UP: Cancel | DOWN Hold: Save & Exit", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
       ir_blaster_obj.resumeIR();
       bool captured = false;
@@ -9130,12 +9130,12 @@ void MenuFunctions::runLearnRemoteWizard() {
         display_obj.tft.fillRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_DARKGREEN);
         display_obj.tft.drawRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_WHITE);
         display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-        display_obj.tft.drawCentreString("0: + ADD ANOTHER KEY", SCREEN_WIDTH / 2, 48, 2);
+        display_obj.tft.drawCentreString("DOWN: + ADD ANOTHER KEY", SCREEN_WIDTH / 2, 48, 2);
 
         display_obj.tft.fillRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_NAVY);
         display_obj.tft.drawRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_WHITE);
         display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
-        display_obj.tft.drawCentreString("14: SAVE & FINISH", SCREEN_WIDTH / 2, 94, 2);
+        display_obj.tft.drawCentreString("UP: SAVE & FINISH", SCREEN_WIDTH / 2, 94, 2);
 
         while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
         bool choice = false;
@@ -9192,7 +9192,7 @@ void MenuFunctions::runLearnRemoteWizard() {
 
       display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
       display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-      display_obj.tft.drawCentreString("14: Skip (Hold: Exit) | 0 Hold: Save", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+      display_obj.tft.drawCentreString("UP: Skip (Hold: Exit) | DOWN Hold: Save", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
       ir_blaster_obj.resumeIR();
       bool captured = false;
@@ -9269,12 +9269,12 @@ void MenuFunctions::runLearnRemoteWizard() {
           display_obj.tft.fillRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_DARKGREEN);
           display_obj.tft.drawRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_WHITE);
           display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-          display_obj.tft.drawCentreString("0: + LEARN EXTRA KEYS", SCREEN_WIDTH / 2, 48, 2);
+          display_obj.tft.drawCentreString("DOWN: + LEARN EXTRA KEYS", SCREEN_WIDTH / 2, 48, 2);
 
           display_obj.tft.fillRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_NAVY);
           display_obj.tft.drawRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_WHITE);
           display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
-          display_obj.tft.drawCentreString("14: SAVE & FINISH", SCREEN_WIDTH / 2, 94, 2);
+          display_obj.tft.drawCentreString("UP: SAVE & FINISH", SCREEN_WIDTH / 2, 94, 2);
 
           while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
           bool choiceMade = false;
@@ -9335,7 +9335,7 @@ void MenuFunctions::runAddKeyWizard(const String &remoteFile) {
 
     display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
     display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display_obj.tft.drawCentreString("14 / 0: Cancel", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+    display_obj.tft.drawCentreString("UP / DOWN: Cancel", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
     ir_blaster_obj.startIRReceiver();
     ir_blaster_obj.resumeIR();
@@ -9399,12 +9399,12 @@ void MenuFunctions::runAddKeyWizard(const String &remoteFile) {
       display_obj.tft.fillRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_DARKGREEN);
       display_obj.tft.drawRect(15, 38, SCREEN_WIDTH - 30, 36, TFT_WHITE);
       display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
-      display_obj.tft.drawCentreString("0: YES (Add Another)", SCREEN_WIDTH / 2, 48, 2);
+      display_obj.tft.drawCentreString("DOWN: YES (Add Another)", SCREEN_WIDTH / 2, 48, 2);
 
       display_obj.tft.fillRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_NAVY);
       display_obj.tft.drawRect(15, 84, SCREEN_WIDTH - 30, 36, TFT_WHITE);
       display_obj.tft.setTextColor(TFT_WHITE, TFT_NAVY);
-      display_obj.tft.drawCentreString("14: FINISH / EXIT", SCREEN_WIDTH / 2, 94, 2);
+      display_obj.tft.drawCentreString("UP: FINISH / EXIT", SCREEN_WIDTH / 2, 94, 2);
 
       while (digitalRead(0) == LOW || digitalRead(14) == LOW) delay(10);
       bool answer = false;
@@ -9443,7 +9443,7 @@ void MenuFunctions::runIrRead() {
   // Exit / Action banner
   display_obj.tft.fillRect(0, SCREEN_HEIGHT - 16, SCREEN_WIDTH, 16, TFT_DARKGREY);
   display_obj.tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  display_obj.tft.drawCentreString("BOOT: Exit | IO 14: Replay", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
+  display_obj.tft.drawCentreString("DOWN: Exit | UP: Replay", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 13, 1);
 
   // Status info
   display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
