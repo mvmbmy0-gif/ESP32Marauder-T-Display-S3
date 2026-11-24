@@ -1,7 +1,5 @@
 <div align="center">
 
-# 🇺🇦 Проєкт розроблений українцем / Project developed by a Ukrainian 🇺🇦
-
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-no-action.svg)](https://stand-with-ukraine.pp.ua)
 
 <p align="center">
